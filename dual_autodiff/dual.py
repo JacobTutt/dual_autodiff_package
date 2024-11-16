@@ -53,3 +53,73 @@ class Dual:
         """
         return f"Dual(real={self.real}, dual={self.dual})"
     
+    def __add__(self, other):
+        """
+        Define addition for Dual numbers and scalars.
+
+        This method defines addition between:
+        1. Two Dual numbers:
+        Example: Dual(2, 1) + Dual(3, 2) → Dual(real=5, dual=3)
+
+        2. A Dual number and a scalar (int or float):
+        Example: Dual(2, 1) + 3 → Dual(real=5, dual=1)
+
+        2. Invalid input:
+        Example: Dual(2, 1) + "string" → Raises TypeError: "Addition is only supported with Dual or scalar values."
+
+        Parameters:
+            other (Dual, int, or float): The value to add to the current Dual number.
+
+        Returns:
+            Dual: A new Dual number representing the result of the addition.
+
+        Raises:
+            TypeError: If 'other' is not a Dual, int, or float.
+        """
+        if isinstance(other, Dual):
+            real_part = self.real + other.real
+            dual_part = self.dual + other.dual
+            return Dual(real_part, dual_part)
+        elif isinstance(other, (int, float)):
+            return Dual(self.real + other, self.dual)  # Add the scalar to the real part
+        else:
+            raise TypeError("Addition failed as only supported with Dual or scalar values.")
+        
+    def __radd__(self, other):
+        """
+        This method supports adding a scalar (int or float) to a Dual number when the scalar is on the left-hand side of the `+` operator.
+
+        Examples:
+        1. Scalar + Dual:
+        Example: 3 + Dual(2, 1) → Dual(real=5, dual=1)
+
+        2. Invalid input:
+        Example: "string" + Dual(2, 1) → Raises TypeError: "Addition is only supported with Dual or scalar values."
+
+        Parameters:
+            other (int or float): The scalar value to add.
+
+        Returns:
+            Dual: A new Dual number representing the result of the addition.
+
+        Raises:
+            TypeError: If 'other' is not a scalar (int or float).
+        """
+        if isinstance(other, (int, float)):
+            return self.__add__(other)
+        else:
+            raise TypeError("Addition failed as only supported with Dual or scalar values.")
+        
+
+    def __sub__(self, other):
+        """
+        Define subtraction for dual numbers.
+        (a + bε) - (c + dε) = (a - c) + (b - d)ε
+        """
+        if not isinstance(other, Dual):
+            raise TypeError("Subtraction is only supported between two Dual objects.")
+        real_part = self.real - other.real
+        dual_part = self.dual - other.dual
+        return Dual(real_part, dual_part)
+    
+    
