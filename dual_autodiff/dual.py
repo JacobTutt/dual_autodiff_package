@@ -164,5 +164,64 @@ class Dual:
             return Dual(other - self.real, -self.dual)  # Reverse subtraction logic
         else:
             raise TypeError("Subtraction failed as only supported with Dual or scalar values.")
+
+def __mul__(self, other):
+    """
+    Define multiplication for Dual numbers and scalars.
+
+    This method supports multiplication in both standard and reverse cases:
+        - Dual * Dual
+        - Dual * scalar
+        - scalar * Dual (via __rmul__)
+
+    Parameters:
+        other (Dual, int, or float): The value to multiply with the current Dual number.
+
+    Returns:
+        Dual: A new Dual number representing the result of the multiplication.
+
+    Raises:
+        TypeError: If 'other' is not a Dual, int, or float.
+
+    Examples:
+        1. Dual * Dual:
+           >>> x = Dual(5, 3)
+           >>> y = Dual(2, 1)
+           >>> x * y
+           Dual(real=10, dual=11)
+
+        2. Dual * scalar:
+           >>> x = Dual(5, 3)
+           >>> x * 2
+           Dual(real=10, dual=6)
+
+        3. Scalar * Dual:
+           >>> x = Dual(5, 3)
+           >>> 2 * x
+           Dual(real=10, dual=6)
+
+        4. Invalid input:
+           >>> x = Dual(5, 3)
+           >>> x * "string"
+           Traceback (most recent call last):
+               ...
+           TypeError: Multiplication is only supported with Dual or scalar values.
+    """
+    if isinstance(other, Dual):
+        # Multiplication rule for Dual numbers: (a + bε) * (c + dε) = ac + (ad + bc)ε
+        real_part = self.real * other.real
+        dual_part = self.real * other.dual + self.dual * other.real
+        return Dual(real_part, dual_part)
+    elif isinstance(other, (int, float)):
+        # Scalar multiplication: Scale both real and dual parts
+        return Dual(self.real * other, self.dual * other)
+    else:
+        raise TypeError("Multiplication failed as only supported with Dual or scalar values.")
+
+def __rmul__(self, other):
+    if isinstance(other, (int, float)):
+        return self.__mul__(other)
+    else:
+        raise TypeError("Multiplication failed as only supported with Dual or scalar values.")
         
-        
+    
