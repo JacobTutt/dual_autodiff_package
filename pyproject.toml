@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools", "wheel", "setuptools_scm", "build"]  # Build tools, including setuptools_scm for version control
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dual_autodiff"  # Package name
+dynamic = ["version"]  # Use setuptools_scm for automatic versioning
+description = "A Python package for forward-mode automatic differentiation using dual numbers."
+readme = "README.md"  # Path to the README file for project documentation
+requires-python = ">=3.9"  # Minimum Python version required
+license = { text = "MIT" }  # License type
+authors = [
+    { name = "Jacob Tutt", email = "jacobtutt@icloud.com" }
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = []  # Add runtime dependencies here as you develop the package
+
+[project.urls]
+"Source" = "https://github.com/JacobTutt/dual_autodiff"  # Repository URL
+"Issues" = "https://github.com/JacobTutt/dual_autodiff/issues"  # Issue tracker URL
+
+[tool.setuptools_scm]
+version_scheme = "post-release"  # Scheme for version numbering
+local_scheme = "no-local-version"  # Do not add local metadata to the version
+write_to = "dual_autodiff/version.py"  # Automatically write the resolved version to this file
+
+[tool.setuptools.packages.find]
+where = ["."]
