@@ -258,7 +258,7 @@ class Dual:
             3. Scalar / Dual:
             >>> x = Dual(6, 4)
             >>> 12 / x
-            Dual(real=2.0, dual=-1.3333333333333333)
+            Dual(real=2.0, dual=-1.3333...)
 
             4. Invalid input:
             >>> x = Dual(6, 4)
@@ -295,14 +295,21 @@ class Dual:
     def _dual_function(self, func, func_deriv):
         """
         Internal method to apply a function to a dual number.
+
         Supported Functions: 
-            - Sine
-            - Cosine
-            - Tangent
-            - Exponential
-            - Logarithm
-
-
+            - Sine: .sin()
+            - Cosine: .cos()
+            - Tangent: .tan()
+            - Arcsin: .arcsin()
+            - Arccos: .arccos()
+            - Arctan: .arctan()
+            - Sinh: .sinh()
+            - Cosh: .cosh()
+            - Tanh: .tanh()
+            - Exponential: .exp()
+            - Logarithm: .log()
+            - Powers: .pow(n)
+            
         Parameters:
             func (callable): The mathematical function applied to dual number.
             func_deriv (callable): The derivative of the function.
@@ -324,7 +331,7 @@ class Dual:
         Examples:
             >>> x = Dual(2, 1)
             >>> x.sin()
-            Dual(real=0.9092974268256817, dual=-0.4161468365471424)
+            Dual(real=0.9092..., dual=-0.4161...)
         """
         return self._dual_function(math.sin, math.cos)
 
@@ -338,7 +345,7 @@ class Dual:
         Examples:
             >>> x = Dual(2, 1)
             >>> x.cos()
-            Dual(real=-0.4161468365471424, dual=-0.9092974268256817)
+            Dual(real=-0.4161..., dual=-0.9093...)
         """
         return self._dual_function(math.cos, lambda x: -math.sin(x))
 
@@ -352,7 +359,7 @@ class Dual:
         Examples:
             >>> x = Dual(2, 1)
             >>> x.exp()
-            Dual(real=7.38905609893065, dual=7.38905609893065)
+            Dual(real=7.3891..., dual=7.3891...)
         """
         return self._dual_function(math.exp, math.exp)
 
@@ -369,7 +376,7 @@ class Dual:
         Examples:
             >>> x = Dual(2, 1)
             >>> x.log()
-            Dual(real=0.6931471805599453, dual=0.5)
+            Dual(real=0.6931..., dual=0.5)
 
             >>> x = Dual(0, 1)
             >>> x.log()
@@ -394,7 +401,7 @@ class Dual:
         Examples:
             >>> x = Dual(2, 1)
             >>> x.tan()
-            Dual(real=-2.185039863261519, dual=5.774399204041917)
+            Dual(real=-2.1850..., dual=5.7744...)
 
             >>> Dual(math.pi / 2, 1).tan()
             Traceback (most recent call last):
@@ -405,7 +412,7 @@ class Dual:
             raise ValueError("Tangent undefined when cosine of real part equals 0.")
         return self._dual_function(math.tan, lambda x: 1 / (math.cos(x) ** 2))
     
-    def asin(self):
+    def arcsin(self):
         """
         Compute the arcsine (inverse sine) of the Dual number.
 
@@ -418,7 +425,7 @@ class Dual:
         Examples:
             >>> x = Dual(0.5, 1)
             >>> x.asin()
-            Dual(real=0.5235987755982988, dual=1.1547005383792517)
+            Dual(real=0.5236..., dual=1.1547...)
 
             >>> x = Dual(1.5, 1)
             >>> x.asin()
@@ -430,7 +437,7 @@ class Dual:
             raise ValueError("Arcsine is only defined for real parts in the range [-1, 1].")
         return self._dual_function(math.asin, lambda x: 1 / math.sqrt(1 - x**2))
 
-    def acos(self):
+    def arccos(self):
         """
         Compute the arccosine (inverse cosine) of the Dual number.
 
@@ -443,7 +450,7 @@ class Dual:
         Examples:
             >>> x = Dual(0.5, 1)
             >>> x.acos()
-            Dual(real=1.0471975511965979, dual=-1.1547005383792517)
+            Dual(real=1.0472..., dual=-1.1547...)
 
             >>> x = Dual(-1.5, 1)
             >>> x.acos()
@@ -455,7 +462,7 @@ class Dual:
             raise ValueError("Arccosine is only defined for real parts in the range [-1, 1].")
         return self._dual_function(math.acos, lambda x: -1 / math.sqrt(1 - x**2))
 
-    def atan(self):
+    def arctan(self):
         """
         Compute the arctangent (inverse tangent) of the Dual number.
 
@@ -465,7 +472,7 @@ class Dual:
         Examples:
             >>> x = Dual(1, 1)
             >>> x.atan()
-            Dual(real=0.7853981633974483, dual=0.5)
+            Dual(real=0.7854..., dual=0.5)
         """
         return self._dual_function(math.atan, lambda x: 1 / (1 + x**2))
 
@@ -479,7 +486,7 @@ class Dual:
         Examples:
             >>> x = Dual(1, 1)
             >>> x.sinh()
-            Dual(real=1.1752011936438014, dual=1.5430806348152437)
+            Dual(real=1.1752..., dual=1.5431...)
         """
         return self._dual_function(math.sinh, math.cosh)
 
@@ -493,7 +500,7 @@ class Dual:
         Examples:
             >>> x = Dual(1, 1)
             >>> x.cosh()
-            Dual(real=1.5430806348152437, dual=1.1752011936438014)
+            Dual(real=1.5431..., dual=1.1752...)
         """
         return self._dual_function(math.cosh, math.sinh)
 
@@ -507,7 +514,7 @@ class Dual:
         Examples:
             >>> x = Dual(1, 1)
             >>> x.tanh()
-            Dual(real=0.7615941559557649, dual=0.41997434161402614)
+            Dual(real=0.7616..., dual=0.4200...)
         """
         return self._dual_function(math.tanh, lambda x: 1 - math.tanh(x)**2)
     
@@ -552,4 +559,3 @@ class Dual:
             Dual(real=8.0, dual=12.0)
         """
         return self._dual_function(lambda x: x**n, lambda x: n * x**(n-1))
-    
