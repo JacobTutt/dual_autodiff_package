@@ -437,7 +437,7 @@ class Dual:
             Dual: Tangent of original dual number
 
         Raises:
-            ValueError: If the tangent function is undefined as cosine of real part equals 0
+            ValueError: The tangent function is undefined as cosine of real part equals 0
 
         Examples:
             >>> x = Dual(2, 1)

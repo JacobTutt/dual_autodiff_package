@@ -3,7 +3,9 @@ dual_autodiff/.DS_Store
 dual_autodiff/__pycache__/
 dual_autodiff.egg-info/
 
-
+# Build directories
+/dist/
+/build/
 
 # Ignore macOS system files
 .DS_Store
