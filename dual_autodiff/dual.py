@@ -380,6 +380,7 @@ class Dual:
             - Exponential: .exp()
             - Logarithm: .log()
             - Powers: .pow(n)
+            - Square Root: .sqrt()
             
         Parameters:
             func (callable): The mathematical function applied to dual number.
