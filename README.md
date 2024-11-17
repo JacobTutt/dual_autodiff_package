@@ -1,0 +1,83 @@
+# Dual Numbers in Dual Autodiff Package
+**'dual_autodiff'** is a Python library that enables the use of dual numbers in the aim of preforming automatic differentiation.
+
+## Motivation
+
+**Dual numbers** provide a mathematically robust way to compute derivatives automatically and exactly during function evaluation. It typically has lower computational overhead than numerical approaches and eliminates the associated approximation errors. 
+
+ie. consider $f(x) = x^2$:
+- Input: Dual number - $x + \epsilon$
+- Output: 
+$$
+f(x) = (x + \epsilon)^2 = x^2 + 2x\epsilon
+$$
+
+- $x^2$: Outputs real value - the functions value
+- $2x$: Outputs dual value - the functions derivative
+
+### Applications:
+- **Optimization**: In algorithms like gradient descent.
+- **Machine Learning**: Enabling backpropagation and training of neural networks.
+- **Physics and Engineering**: For solving differential equations.
+
+For more details see **dual_autodiff_tutorial** under notebooks
+
+
+## Features
+
+- **Dual Numbers**: A class to store dual numbers
+- **Arithmetic Operations** supports use of addition, subtraction, multiplication, and division on dual numbers.
+- **Automatic Differentiation**: Compute derivatives automatically using the properties of dual numbers.
+- **Mathematical Functions**:
+  - Trigonometric: `sin`, `cos`, `tan`, and their inverses (`arcsin`, `arccos`, `arctan`).
+  - Hyperbolic: `sinh`, `cosh`, `tanh`.
+  - Exponential and logarithmic: `exp`, `log`.
+  - Powers and roots: `pow`, `sqrt`.
+- **dual_autodiff_tutorial**: A comprehensive Jupyter Notebook showcasing the features and usage of the package.
+
+## Installation
+
+1. Clone the repository:
+    ```bash
+    git clone https://github.com/JacobTutt/dual_autodiff_package.git
+    cd dual_autodiff_package
+    ```
+
+2. Install the package in editable mode:
+    ```bash
+    pip install -e .
+    ```
+
+3. For the tutorial, install optional dependencies:
+    ```bash
+    pip install '.[tutorial]'
+    ```
+
+## Usage
+
+### Import the Package
+```python
+from dual_autodiff import Dual
+```
+
+### Basic Examples
+
+```python
+x = Dual(2, 1)  # Dual number: 2 + 1ε
+y = Dual(3, 2)  # Dual number: 3 + 2ε
+
+# Arithmetic Operations
+print(x + y)    # Dual(real=5, dual=3)
+print(x - y)    # Dual(real=-1, dual=-1)
+print(x * y)    # Dual(real=6, dual=7)
+print(x / y)    # Dual(real=0.666..., dual=-0.222...)
+
+# Mathematical Functions
+print(x.sin())  # Dual(real=0.9092..., dual=-0.4161...)
+print(x.log())  # Dual(real=0.6931..., dual=0.5)
+```
+
+- For more comprehensive examples see:
+    - **dual_autodiff_tutorial** in notebooks directory
+
+

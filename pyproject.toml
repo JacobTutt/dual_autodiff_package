@@ -25,6 +25,9 @@ classifiers = [
 
 dependencies = []  # Add runtime dependencies here as you develop the package
 
+[project.optional-dependencies]
+tutorial = ["numpy", "jupyter"]
+
 [project.urls]
 "Source" = "https://github.com/JacobTutt/dual_autodiff"  # Repository URL
 "Issues" = "https://github.com/JacobTutt/dual_autodiff/issues"  # Issue tracker URL
