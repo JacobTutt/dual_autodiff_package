@@ -1,0 +1,39 @@
+# Files for Git not to Track
+
+# Ignore macOS system files
+.DS_Store
+
+# Ignore Python cache files and compiled bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore environment files
+.env
+.venv
+env/
+venv/
+
+# Ignore build and distribution directories
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Ignore logs and temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Ignore editor and IDE-specific files
+.vscode/
+.idea/
+
+# Ignore Git metadata (you should never ignore `.git/`)
+*.orig
+
+# Ignore specific files in your project
+dual_autodiff/.DS_Store
+dual_autodiff/__pycache__/
+dual_autodiff.egg-info/
