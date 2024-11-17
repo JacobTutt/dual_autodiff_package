@@ -1,0 +1,5 @@
+# Exclude Jupyter notebooks
+exclude *.ipynb
+
+# Exclude directory of demo notebooks
+prune notebooks/

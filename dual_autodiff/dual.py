@@ -20,7 +20,8 @@ class Dual:
         self.real = self._validate_input(real, "Real part")
         self.dual = self._validate_input(dual, "Dual part")
 
-    def _validate_input(part_value: float, part: str) -> float:
+    @staticmethod
+    def _validate_input(part_value: float, part: str):
         """
         Validate the input for the real or dual part.
 
@@ -55,7 +56,7 @@ class Dual:
 
 
     # Use of '__repr__' to set a dual numbers output format 'Dual(real = ..., dual = ...)'
-    def __repr__(self) -> str:
+    def __repr__(self):
         """
         Output the dual number in a readable format.
 

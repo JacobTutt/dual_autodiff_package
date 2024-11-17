@@ -1,4 +1,9 @@
 # Files for Git not to Track
+dual_autodiff/.DS_Store
+dual_autodiff/__pycache__/
+dual_autodiff.egg-info/
+
+
 
 # Ignore macOS system files
 .DS_Store
@@ -32,8 +37,3 @@ dist/
 
 # Ignore Git metadata (you should never ignore `.git/`)
 *.orig
-
-# Ignore specific files in your project
-dual_autodiff/.DS_Store
-dual_autodiff/__pycache__/
-dual_autodiff.egg-info/
