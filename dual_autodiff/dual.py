@@ -6,7 +6,7 @@ class Dual:
     and automatic differentiation.
 
     """
-
+    # Initialising the 'Dual number' class
     def __init__(self, real: float, dual: float):
         """
         Initialize a dual number with its real and dual parts.
@@ -15,6 +15,8 @@ class Dual:
             real (float): The real part of the dual number.
             dual (float): The dual part of the dual number.
         """
+
+        # Preforming input validation using seperate class function to allow reuse
         self.real = self._validate_input(real, "Real part")
         self.dual = self._validate_input(dual, "Dual part")
 
@@ -33,14 +35,26 @@ class Dual:
             TypeError: If 'real part' or 'dual part' is not a number.
             ValueError: If 'real part' or 'dual part' is NaN or infinite.
         """
+        # Check value is of form of an integer or float
         if not isinstance(part_value, (int, float)):
             raise TypeError(f"'{part}' must be a number (int or float), got {type(part_value).__name__}.")
-        if math.isnan(part_value):  # Check for NaN
+        
+        # Check value is not a 'NaN' - 'floating point number' for undefined values
+        # If so throw ValueError
+        if math.isnan(part_value):  
             raise ValueError(f"'{part}' cannot be NaN.")
-        if part_value in (float("inf"), float("-inf")):  # Check for infinity
+        
+        # Check value is not for infite (+/-)
+        # If so throw ValueError
+        if part_value in (float("inf"), float("-inf")):  
             raise ValueError(f"'{part}' cannot be infinite.")
-        return float(part_value)  # Ensure the value is cast to float
+        
+        # Ensure if correct input it is cast to float
+        return float(part_value) 
+    
 
+
+    # Use of '__repr__' to set a dual numbers output format 'Dual(real = ..., dual = ...)'
     def __repr__(self) -> str:
         """
         Output the dual number in a readable format.
@@ -50,6 +64,10 @@ class Dual:
         """
         return f"Dual(real={self.real}, dual={self.dual})"
     
+
+
+    # Overwrites addition operator for use on dual numbers 
+    # Written to support addition of dual numbers together and dual numbers with scalar
     def __add__(self, other):
         """
         Define addition for Dual numbers and scalars.
@@ -92,21 +110,35 @@ class Dual:
                 ...
             TypeError: Addition is only supported with Dual or scalar values.
         """
+
+        # If both operands are dual numbers add real and dual parts respectively
+        # (a+bε) + (c+dε) = (a+c) + (b+d)ε
         if isinstance(other, Dual):
             real_part = self.real + other.real
             dual_part = self.dual + other.dual
             return Dual(real_part, dual_part)
+        
+        # If dual + int/float
+        # (a+bε) + c = (a+c) + bε
         elif isinstance(other, (int, float)):
-            return Dual(self.real + other, self.dual)  # Add the scalar to the real part
+            return Dual(self.real + other, self.dual)
+        
+        # If not addition of dual and scalar - throw 'Type Error'
         else:
             raise TypeError("Addition failed as only supported with Dual or scalar values.")
         
+    # This overwrites the reverse addition opertor to support int/float + dual
+    # a + (c+dε) = (a+c) + dε
     def __radd__(self, other):
         if isinstance(other, (int, float)):
             return self.__add__(other)
         else:
             raise TypeError("Addition failed as only supported with Dual or scalar values.")
     
+
+
+    # Overwrites subtraction operator for use on dual numbers 
+    # Written to support subtraction of dual numbers together and dual numbers with scalar
     def __sub__(self, other):
         """
         Define subtraction for Dual numbers and scalars.
@@ -149,22 +181,35 @@ class Dual:
                 ...
             TypeError: Subtraction is only supported with Dual or scalar values.
         """
+
+        # If both operands are dual numbers subtract real and dual parts respectively
+        # (a+bε) - (c+dε) = (a-c) + (b-d)ε
         if isinstance(other, Dual):
             real_part = self.real - other.real
             dual_part = self.dual - other.dual
             return Dual(real_part, dual_part)
+        
+        # If dual - int/float
+        # (a+bε) - c = (a-c) + bε
         elif isinstance(other, (int, float)):
             return Dual(self.real - other, self.dual)
+        
+        # If not subtraction of dual and scalar - throw 'Type Error'
         else:
             raise TypeError("Subtraction failed as only supported with Dual or scalar values.")
-
+        
+    # This overwrites the reverse subtraction opertor to support int/float - dual
+    # a - (c+dε) = (a-c) - dε
     def __rsub__(self, other):
-        # Delegate reverse subtraction logic to handle scalar - Dual
         if isinstance(other, (int, float)):
-            return Dual(other - self.real, -self.dual)  # Reverse subtraction logic
+            return Dual(other - self.real, -self.dual)  
         else:
             raise TypeError("Subtraction failed as only supported with Dual or scalar values.")
 
+
+
+    # Overwrites multiplication operator for use on dual numbers 
+    # Written to support multiplication of dual numbers together and dual numbers with scalar
     def __mul__(self, other):
         """
         Define multiplication for Dual numbers and scalars.
@@ -207,23 +252,33 @@ class Dual:
                 ...
             TypeError: Multiplication is only supported with Dual or scalar values.
         """
+
+        # If both operands are dual numbers:
+        # (a + bε) * (c + dε) = ac + (ad + bc)ε
         if isinstance(other, Dual):
-            # Multiplication rule for Dual numbers: (a + bε) * (c + dε) = ac + (ad + bc)ε
             real_part = self.real * other.real
             dual_part = self.real * other.dual + self.dual * other.real
             return Dual(real_part, dual_part)
+        
+        # If dual * int/float
+        # (a + bε) * c  = a*c + (b*c)ε
         elif isinstance(other, (int, float)):
-            # Scalar multiplication: Scale both real and dual parts
             return Dual(self.real * other, self.dual * other)
+        
+        # If not multiplication of dual and scalar - throw 'TypeError'
         else:
             raise TypeError("Multiplication failed as only supported with Dual or scalar values.")
-
+        
+    # This overwrites the reverse multiplication opertor to support int/float * dual
+    # a - (c+dε) = (a-c) - dε
     def __rmul__(self, other):
         if isinstance(other, (int, float)):
             return self.__mul__(other)
         else:
             raise TypeError("Multiplication failed as only supported with Dual or scalar values.")
-        
+    
+    
+
     def __truediv__(self, other):
         """
         Define division for Dual numbers and scalars.
@@ -268,21 +323,31 @@ class Dual:
                 ...
             ZeroDivisionError: Cannot divide by a Dual number with no real part.
         """
+        # If both operands are Dual numbers:
+        # (a + bε) / (c + dε) = (a/c) + ((b*c - a*d) / c^2)ε
         if isinstance(other, Dual):
+            # If division by 0 (undefined) - throws ZeroDivisionError
             if other.real == 0:
                 raise ZeroDivisionError("Cannot divide by a Dual number with no real part.")
             real_part = self.real / other.real
             dual_part = (self.dual * other.real - self.real * other.dual) / (other.real ** 2)
             return Dual(real_part, dual_part)
+        
+        # If dividing a Dual number by a scalar (int or float):
+        # (a + bε) / c = (a/c) + (b/c)ε
         elif isinstance(other, (int, float)):
+            # If division by 0 (undefined) - throws ZeroDivisionError
             if other == 0:
                 raise ZeroDivisionError("Cannot divide by zero.")
             return Dual(self.real / other, self.dual / other)
+        
+        # If not division of dual and scalar - throw 'TypeError'
         else:
             raise TypeError("Division is only supported with Dual or scalar values.")
 
+    # This overwrites the reverse multiplication opertor to support int/float / dual
+    # a / (c+dε) = (a / c) - (a * d / c^2)ε
     def __rtruediv__(self, other):
-        # Delegate scalar / Dual division logic to __truediv__
         if isinstance(other, (int, float)):
             if self.real == 0:
                 raise ZeroDivisionError("Cannot divide by a Dual number with zero as its real part.")
@@ -292,6 +357,11 @@ class Dual:
         else:
             raise TypeError("Division is only supported with Dual or scalar values.")
         
+
+
+    # Defines a generic function implementing the preperty of dual numbers
+    # f(a+bε) = f(a) = f'(a)*bε
+    # Used internally by specific functions which input function and its derivative
     def _dual_function(self, func, func_deriv):
         """
         Internal method to apply a function to a dual number.
@@ -320,7 +390,11 @@ class Dual:
         real_part = func(self.real)
         dual_part = func_deriv(self.real) * self.dual
         return Dual(real_part, dual_part)
+    
 
+
+    # Defines Sin() operator using _dual_function
+    # Derivative: Cos()
     def sin(self):
         """
         Compute the sine of the Dual number.
@@ -335,6 +409,8 @@ class Dual:
         """
         return self._dual_function(math.sin, math.cos)
 
+    # Defines Cos() operator using _dual_function
+    # Derivative: -Sin()
     def cos(self):
         """
         Compute the cosine of the Dual number.
@@ -348,7 +424,39 @@ class Dual:
             Dual(real=-0.4161..., dual=-0.9093...)
         """
         return self._dual_function(math.cos, lambda x: -math.sin(x))
+    
+    # Defines tan() operator using _dual_function - log(x)
+    # Derivative: 1/cos^2(x)
+    def tan(self):
+        """
+        Compute the tangent of the Dual number.
 
+        Returns:
+            Dual: Tangent of original dual number
+
+        Raises:
+            ValueError: If the tangent function is undefined as cosine of real part equals 0
+
+        Examples:
+            >>> x = Dual(2, 1)
+            >>> x.tan()
+            Dual(real=-2.1850..., dual=5.7744...)
+
+            >>> Dual(math.pi / 2, 1).tan()
+            Traceback (most recent call last):
+                ...
+            ValueError: Tangent undefined when cosine of real part equals 0.
+        """
+
+        # Checks for regions in which tan is undefined - eg. pi/2
+        # Same regions in which cos(x) = 0 - uses tolerance of 1e-9 around value
+        # If case: throws 'ValueError'
+        if math.isclose(math.cos(self.real), 0, abs_tol=1e-9):
+            raise ValueError("Tangent undefined when cosine of real part equals 0.")
+        return self._dual_function(math.tan, lambda x: 1 / (math.cos(x) ** 2))
+
+    # Defines exp() operator using _dual_function - e^x
+    # Derivative: exp()
     def exp(self):
         """
         Compute the exponential of the Dual number.
@@ -363,6 +471,8 @@ class Dual:
         """
         return self._dual_function(math.exp, math.exp)
 
+    # Defines log() operator using _dual_function - log(x)
+    # Derivative: 1/x
     def log(self):
         """
         Compute the natural logarithm of the Dual number.
@@ -384,34 +494,15 @@ class Dual:
                 ...
             ValueError: Logarithm is undefined for dual numbers with non-positive real parts.
         """
+
+        # Checks for Logirithm of non positive number for which undefined
+        # If so throws 'Value Error'
         if self.real <= 0:
             raise ValueError("Logarithm is undefined for dual numbers with non-positive real parts.")
         return self._dual_function(math.log, lambda x: 1 / x)
-
-    def tan(self):
-        """
-        Compute the tangent of the Dual number.
-
-        Returns:
-            Dual: Tangent of original dual number
-
-        Raises:
-            ValueError: If the tangent function is undefined as cosine of real part equals 0
-
-        Examples:
-            >>> x = Dual(2, 1)
-            >>> x.tan()
-            Dual(real=-2.1850..., dual=5.7744...)
-
-            >>> Dual(math.pi / 2, 1).tan()
-            Traceback (most recent call last):
-                ...
-            ValueError: Tangent undefined when cosine of real part equals 0.
-        """
-        if math.isclose(math.cos(self.real), 0, abs_tol=1e-9):
-            raise ValueError("Tangent undefined when cosine of real part equals 0.")
-        return self._dual_function(math.tan, lambda x: 1 / (math.cos(x) ** 2))
     
+    # Defines arcsin() operator using _dual_function
+    # Derivative: 1/sqrt(1-x^2)
     def arcsin(self):
         """
         Compute the arcsine (inverse sine) of the Dual number.
@@ -433,10 +524,15 @@ class Dual:
                 ...
             ValueError: Arcsine is only defined for real parts in the range [-1, 1].
         """
+
+        # Checks for defined inputs where arcsin is defined: [-1,1]
+        # If so throws 'Value Error'
         if not -1 <= self.real <= 1:
             raise ValueError("Arcsine is only defined for real parts in the range [-1, 1].")
         return self._dual_function(math.asin, lambda x: 1 / math.sqrt(1 - x**2))
-
+    
+    # Defines arccos() operator using _dual_function
+    # Derivative: -1/sqrt(1-x^2)
     def arccos(self):
         """
         Compute the arccosine (inverse cosine) of the Dual number.
@@ -458,10 +554,14 @@ class Dual:
                 ...
             ValueError: Arccosine is only defined for real parts in the range [-1, 1].
         """
+        # Checks for defined inputs where arcccos is defined: [-1,1]
+        # If so throws 'Value Error'
         if not -1 <= self.real <= 1:
             raise ValueError("Arccosine is only defined for real parts in the range [-1, 1].")
         return self._dual_function(math.acos, lambda x: -1 / math.sqrt(1 - x**2))
 
+    # Defines arctan() operator using _dual_function
+    # Derivative: 1/sqrt(1+x^2)
     def arctan(self):
         """
         Compute the arctangent (inverse tangent) of the Dual number.
@@ -475,7 +575,10 @@ class Dual:
             Dual(real=0.7854..., dual=0.5)
         """
         return self._dual_function(math.atan, lambda x: 1 / (1 + x**2))
+    
 
+    # Defines hyperbolic operator: sinh() using _dual_function
+    # Derivative: hyperbolic operator: cosh()
     def sinh(self):
         """
         Compute the hyperbolic sine of the Dual number.
@@ -490,6 +593,8 @@ class Dual:
         """
         return self._dual_function(math.sinh, math.cosh)
 
+    # Defines hyperbolic operator: cosh() using _dual_function
+    # Derivative: hyperbolic operator: sinh()
     def cosh(self):
         """
         Compute the hyperbolic cosine of the Dual number.
@@ -503,7 +608,9 @@ class Dual:
             Dual(real=1.5431..., dual=1.1752...)
         """
         return self._dual_function(math.cosh, math.sinh)
-
+    
+    # Defines hyperbolic operator: tanh() using _dual_function
+    # Derivative: hyperbolic operator: 1-tanh^2()
     def tanh(self):
         """
         Compute the hyperbolic tangent of the Dual number.
@@ -518,6 +625,8 @@ class Dual:
         """
         return self._dual_function(math.tanh, lambda x: 1 - math.tanh(x)**2)
     
+    # Defines square root operator - sqrt() using _dual_function
+    # Derivative: (1/2) x^(-1/2)
     def sqrt(self):
         """
         Compute the square root of the Dual number.
@@ -543,6 +652,8 @@ class Dual:
             raise ValueError("Square root is undefined when real parts of dual number are negetive.")
         return self._dual_function(math.sqrt, lambda x: 0.5 / math.sqrt(x))
     
+    # Defines 'to the power of' operator - pow(n) using _dual_function
+    # Derivative: n * x^(n-1)
     def pow(self, n):
         """
         Compute the Dual number raised to a power n.
@@ -559,3 +670,5 @@ class Dual:
             Dual(real=8.0, dual=12.0)
         """
         return self._dual_function(lambda x: x**n, lambda x: n * x**(n-1))
+
+
