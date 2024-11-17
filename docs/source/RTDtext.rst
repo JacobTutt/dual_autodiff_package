@@ -1,0 +1,131 @@
+What are Dual Numbers
+---------------------
+
+**Dual numbers** are those expressed in the form:
+
+.. math::
+
+   x + \epsilon y
+
+Where:
+
+- :math:`x`: the **real part**.
+- :math:`y`: the **dual part** (can represent the derivative).
+- :math:`\epsilon`: a quantity with the defining property :math:`\epsilon^2 = 0`.
+
+Why Are Dual Numbers Useful?
+----------------------------
+
+Automatic Differentiation
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Dual numbers are used within **forward-mode automatic differentiation**, 
+a method for computing **exact derivatives of functions**. This method 
+has low computational overhead and can simultaneously compute a 
+function's value :math:`f(x)` and its derivative :math:`f'(x)`.
+
+For a function :math:`f(x)`, using dual numbers, we can compute both the 
+value of the function and its derivative simultaneously. Consider 
+:math:`f(x) = x^2`:
+
+- **Input**: Dual number - :math:`x + \epsilon`
+- **Output**:
+
+.. math::
+
+   f(x) = (x + \epsilon)^2 = x^2 + 2x\epsilon
+
+- :math:`x^2`: Outputs the real value - the function's value.
+- :math:`2x`: Outputs the dual value - the function's derivative.
+
+Applications
+~~~~~~~~~~~~
+
+- **Optimization**: In algorithms like gradient descent.
+- **Machine Learning**: Enabling backpropagation and training of neural networks.
+- **Physics and Engineering**: For solving differential equations.
+
+Package Features
+----------------
+
+- **Dual Numbers**: A class to store dual numbers.
+- **Arithmetic Operations**: Supports addition, subtraction, multiplication, and division on dual numbers.
+- **Automatic Differentiation**: Compute derivatives automatically using the properties of dual numbers.
+- **Mathematical Functions**:
+  - Trigonometric: ``sin``, ``cos``, ``tan``, and their inverses (``arcsin``, ``arccos``, ``arctan``).
+  - Hyperbolic: ``sinh``, ``cosh``, ``tanh``.
+  - Exponential and logarithmic: ``exp``, ``log``.
+  - Powers and roots: ``pow``, ``sqrt``.
+- **dual_autodiff_tutorial**: A comprehensive Jupyter Notebook showcasing the features and usage of the package.
+
+Installation
+------------
+
+1. Clone the repository:
+
+   .. code:: bash
+
+      git clone https://github.com/JacobTutt/dual_autodiff_package.git
+      cd dual_autodiff_package
+
+2. Install the package in editable mode:
+
+   .. code:: bash
+
+      pip install -e .
+
+3. For the tutorial, install optional dependencies:
+
+   .. code:: bash
+
+      pip install '.[tutorial]'
+
+Usage
+-----
+
+Import the Package
+~~~~~~~~~~~~~~~~~~
+
+.. code:: python
+
+   from dual_autodiff import Dual
+
+Basic Examples
+~~~~~~~~~~~~~~
+
+.. code:: python
+
+   ## Initialize two dual numbers x, y
+   x = Dual(2, 1)  # Dual number: 2 + 1ε
+   y = Dual(3, 2)  # Dual number: 3 + 2ε
+
+   # Arithmetic Operations
+   print(x + y)    # Dual(real=5, dual=3)
+   print(x - y)    # Dual(real=-1, dual=-1)
+   print(x * y)    # Dual(real=6, dual=7)
+   print(x / y)    # Dual(real=0.666..., dual=-0.222...)
+
+   # Mathematical Functions
+   print(x.sin())  # Dual(real=0.9092..., dual=-0.4161...)
+   print(x.log())  # Dual(real=0.6931..., dual=0.5)
+
+Tutorial Notebook
+~~~~~~~~~~~~~~~~~
+
+For more comprehensive examples, see the **dual_autodiff_tutorial** in the notebooks directory.
+
+Contributing
+------------
+
+To contribute to this package:
+
+1. Fork the repository.
+
+2. Create a new branch for your feature or bugfix.
+
+3. Submit a pull request.
+
+License
+-------
+
+This project is licensed under the MIT License. See the LICENSE file for more information.

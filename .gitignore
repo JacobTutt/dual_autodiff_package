@@ -1,11 +1,23 @@
 # Files for Git not to Track
+
+#Python build Artifacts
 dual_autodiff/.DS_Store
 dual_autodiff/__pycache__/
 dual_autodiff.egg-info/
 
+# Ignore Sphinx build output
+docs/build/
+docs/Makefile
+docs/make.bat
+
 # Build directories
 /dist/
 /build/
+
+# Sphinx build artifacts
+docs/_build/
+docs/.doctrees/
+docs/.sphinx/
 
 # Ignore macOS system files
 .DS_Store

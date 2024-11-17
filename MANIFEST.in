@@ -2,4 +2,4 @@
 exclude *.ipynb
 
 # Exclude directory of demo notebooks
-prune notebooks/
+prune tutorials/
