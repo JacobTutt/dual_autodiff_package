@@ -63,6 +63,7 @@ from dual_autodiff import Dual
 ### Basic Examples
 
 ```python
+## Initialise two dual numbers x, y
 x = Dual(2, 1)  # Dual number: 2 + 1ε
 y = Dual(3, 2)  # Dual number: 3 + 2ε
 
@@ -76,8 +77,15 @@ print(x / y)    # Dual(real=0.666..., dual=-0.222...)
 print(x.sin())  # Dual(real=0.9092..., dual=-0.4161...)
 print(x.log())  # Dual(real=0.6931..., dual=0.5)
 ```
-
 - For more comprehensive examples see:
     - **dual_autodiff_tutorial** in notebooks directory
 
 
+## Contributing
+To contribute to this package:
+- 1.	Fork the repository.
+- 2.	Create a new branch for your feature or bugfix.
+- 3.	Submit a pull request.
+
+## License
+This project is licensed under the MIT License. See the LICENSE file for more information.
