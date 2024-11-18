@@ -21,6 +21,7 @@ setup(
     install_requires=[],
     setup_requires=[
         "setuptools",
+        "wheel",
         "Cython",
     ],
     extras_require={
@@ -28,6 +29,7 @@ setup(
         "docs": ["sphinx", "nbsphinx", "jupyter"],
         "cython": ["cython"],
     },
+
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
