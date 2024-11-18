@@ -13,7 +13,7 @@ setup(
     author="Jacob Tutt",
     author_email="jacobtutt@icloud.com",
     url="https://github.com/JacobTutt/dual_autodiff",
-    packages=find_packages(where=["dual_autodiff", "dual_autodiff_x"])
+    packages=find_packages(where=["dual_autodiff", "dual_autodiff_x"]),
     ext_modules=cythonize(
         extensions,
         compiler_directives={"language_level": "3"}
