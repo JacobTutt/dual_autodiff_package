@@ -20,19 +20,23 @@ $$
 - **Machine Learning**: Enabling backpropagation and training of neural networks.
 - **Physics and Engineering**: For solving differential equations.
 
-For more details see **dual_autodiff_tutorial** under notebooks
+### Tutorials
+
+For more details see **dual_autodiff.ipynb** under tutorials
+
 
 
 ## Features
 
 - **Dual Numbers**: A class to store dual numbers
 - **Arithmetic Operations** supports use of addition, subtraction, multiplication, and division on dual numbers.
-- **Automatic Differentiation**: Compute derivatives automatically using the properties of dual numbers.
 - **Mathematical Functions**:
   - Trigonometric: `sin`, `cos`, `tan`, and their inverses (`arcsin`, `arccos`, `arctan`).
   - Hyperbolic: `sinh`, `cosh`, `tanh`.
   - Exponential and logarithmic: `exp`, `log`.
   - Powers and roots: `pow`, `sqrt`.
+- **Automatic Differentiation**: Compute derivatives automatically using the properties of dual numbers.
+  - `auto_diff(func, value)`
 - **dual_autodiff_tutorial**: A comprehensive Jupyter Notebook showcasing the features and usage of the package.
 
 ## Installation
@@ -48,7 +52,12 @@ For more details see **dual_autodiff_tutorial** under notebooks
     pip install -e .
     ```
 
-3. For the tutorial, install optional dependencies:
+3. For the testing, install optional dependencies:
+    ```bash
+    pip install '.[testing]'
+    ```
+
+4. For the tutorial, install optional dependencies:
     ```bash
     pip install '.[tutorial]'
     ```
@@ -71,11 +80,20 @@ print(x - y)    # Dual(real=-1, dual=-1)
 print(x * y)    # Dual(real=6, dual=7)
 print(x / y)    # Dual(real=0.666..., dual=-0.222...)
 
-# Mathematical Functions
+# Mathematical Functions in Class
 print(x.sin())  # Dual(real=0.9092..., dual=-0.4161...)
 print(x.log())  # Dual(real=0.6931..., dual=0.5)
+
+## Mathematical Functions using Math operators
+print(pow(x,n))
+print(atan(x))
+
+## Automatic Differentiation
+func = x**2 + 3*x
+print(auto_diff(func, 5))
 ```
 - For more comprehensive examples see: **dual_autodiff_tutorial** in the notebooks directory
+
 ## Contributing
 To contribute to this package:
 - 1. Fork the repository.
