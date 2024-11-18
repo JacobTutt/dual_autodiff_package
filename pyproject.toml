@@ -28,7 +28,7 @@ dependencies = []
 [project.optional-dependencies]
 tutorial = ["numpy", "nbsphinx", "jupyter"]
 testing = ["pytest"]
-
+cython = ["cython"]
 
 [project.urls]
 "Source" = "https://github.com/JacobTutt/dual_autodiff"  
