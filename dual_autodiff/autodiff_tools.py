@@ -74,6 +74,9 @@ def tan(x):
     Returns:
         float or Dual: The tangent of the input.
 
+    Raises:
+        ValueError: The tangent function is undefined as cosine of real part equals 0
+
     Examples:
         >>> from dual_autodiff import tan, Dual
         >>> tan(0)
@@ -96,6 +99,9 @@ def asin(x):
 
     Returns:
         float or Dual: The arcsine of the input.
+    
+    Raises:
+        ValueError: If the real part is outside the range [-1, 1].
 
     Examples:
         >>> from dual_autodiff import asin, Dual
@@ -118,6 +124,9 @@ def acos(x):
 
     Returns:
         float or Dual: The arccosine of the input.
+
+    Raises:
+        ValueError: If the real part is outside the range [-1, 1].
 
     Examples:
         >>> from dual_autodiff import acos, Dual
@@ -255,6 +264,9 @@ def log(x):
     Returns:
         float or Dual: The natural logarithm of the input.
 
+    Raises:
+        ValueError: If the real part of dual number is non-positive
+
     Examples:
         >>> from dual_autodiff import log, Dual
         >>> log(2)
@@ -278,6 +290,9 @@ def sqrt(x):
     Returns:
         float or Dual: The square root of the input.
 
+    Raises:
+        ValueError: If the real part of dual number is negative.
+
     Examples:
         >>> from dual_autodiff import sqrt, Dual
         >>> sqrt(4)
@@ -300,6 +315,9 @@ def pow(x, n):
 
     Returns:
         float or Dual: The result of raising `x` to the power `n`.
+
+    Raises:
+        TypeError: If n is not an int or float.
 
     Examples:
         >>> from dual_autodiff import pow, Dual
@@ -325,9 +343,20 @@ def auto_diff(f, x):
     Returns:
         float: The derivative of `f` at `x`.
 
+    Raises:
+        TypeError: If f is not callable
+        TypeError: If input x a Dual, float, or int.
+
     Examples:
         >>> from dual_autodiff import auto_diff
         >>> auto_diff(lambda x: x**2 + x, 2)
         5.0
     """
+    # Validate that f is callable function 
+    if not callable(f):
+        raise TypeError(f"function must be a callable function, got {type(f).__name__}.")
+
+    # Validate that input x is a `Dual` or scalar (float/ int)
+    if not isinstance(x, (Dual, float, int)):
+        raise TypeError(f"x must be a `Dual` number, float, or int, got {type(x).__name__}.")
     return f(Dual(x, 1)).dual
