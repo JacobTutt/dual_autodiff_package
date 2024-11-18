@@ -135,6 +135,37 @@ def test_division():
         x1 / [1, 2]
 
 
+def test_power_operator():
+    # Dual number raised to an integer power
+    x = Dual(2, 1)
+    result = x**2
+    assert result.real == 4.0
+    assert result.dual == 4.0
+
+    # Dual number raised to a float power
+    result = x**1.5
+    assert pytest.approx(result.real) == 2.8284271247461903  # sqrt(8)
+    assert pytest.approx(result.dual) == 2.121320343559643  # (1.5 * sqrt(4) * 1)
+
+    # Edge case: Power of 0
+    result = x**0
+    assert result.real == 1.0
+    assert result.dual == 0.0
+
+    # Edge case: Power of 1
+    result = x**1
+    assert result.real == 2.0
+    assert result.dual == 1.0
+
+    # Dual number raised to a negative power
+    result = x**-1
+    assert pytest.approx(result.real) == 0.5
+    assert pytest.approx(result.dual) == -0.25
+
+    # Invalid power type
+    with pytest.raises(TypeError):
+        x**"string"
+
 # Test overwritten inequalities
 def test_inqualities():
     x1 = Dual(2, 3)
@@ -169,8 +200,8 @@ def test_inqualities():
         x1 <= None
 
 
-# Test mathematical functions
-def test_math_functions():
+# Test trionmetric functions
+def test_trig_functions():
     x = Dual(2, 1)
 
     # Test sin function
@@ -182,20 +213,16 @@ def test_math_functions():
     assert math.isclose(x.cos().dual, -math.sin(2))
 
     # Test tan function
-    assert math.isclose(x.exp().real, math.exp(2))
-    assert math.isclose(x.exp().dual, math.exp(2))
-
-    # Test logirithm function
-    assert math.isclose(x.log().real, math.log(2))
-    assert math.isclose(x.log().dual, 1 / 2)
+    assert math.isclose(x.tan().real, math.tan(2))
+    assert math.isclose(x.tan().dual, 1 / (math.cos(2) ** 2))
 
     # Test tan function with undefined value
     with pytest.raises(ValueError):
         Dual(math.pi / 2, 1).tan()
 
 
-# Test invalid initialization and math operations
-def test_invalid_math_operations():
+# Test invalid initialization of trignometry operations
+def test_invalid_trig_operations():
     x = Dual(-1, 1)
 
     # Logarithm of negative real part
@@ -222,6 +249,59 @@ def test_hyperbolic_functions():
     # Test tanh function
     assert math.isclose(x.tanh().real, math.tanh(1))
     assert math.isclose(x.tanh().dual, 1 - math.tanh(1) ** 2)
+
+# Test inverse trigonometric functions
+def test_inverse_trig_functions():
+    x = Dual(0.5, 1)
+
+    # Test asin function
+    assert math.isclose(x.asin().real, math.asin(0.5))
+    assert math.isclose(x.asin().dual, 1 / math.sqrt(1 - 0.5 ** 2))
+
+    # Test acos function
+    assert math.isclose(x.acos().real, math.acos(0.5))
+    assert math.isclose(x.acos().dual, -1 / math.sqrt(1 - 0.5 ** 2))
+
+    # Test atan function
+    assert math.isclose(x.atan().real, math.atan(0.5))
+    assert math.isclose(x.atan().dual, 1 / (1 + 0.5 ** 2))
+
+    # Test domain errors
+    with pytest.raises(ValueError):
+        Dual(2, 1).asin()
+    with pytest.raises(ValueError):
+        Dual(-2, 1).acos()
+
+
+# Test exponential, logarithmic, and power functions
+def test_exp_log_pow():
+    x = Dual(2, 1)
+
+    # Test exponential function
+    assert math.isclose((x.exp()).real, math.exp(2))
+    assert math.isclose((x.exp()).dual, math.exp(2))
+
+    # Test logarithmic function
+    assert math.isclose(x.log().real, math.log(2))
+    assert math.isclose(x.log().dual, 1 / 2)
+
+    # Test power function
+    assert (x.pow(3)) == Dual(8.0, 12.0)
+    assert (x.pow(0.5)) == Dual(math.sqrt(2), 0.5 / math.sqrt(2))
+
+    # Test logarithm and power errors
+    with pytest.raises(ValueError):
+        Dual(-1, 1).log()
+    with pytest.raises(TypeError):
+        x.pow("string")
+
+
+# Test square root
+def test_sqrt():
+    x = Dual(4, 1)
+    assert (x.sqrt()) == Dual(2.0, 0.25)
+    with pytest.raises(ValueError):
+        Dual(-1, 1).sqrt()
 
 if __name__ == "__main__":
     pytest.main()
