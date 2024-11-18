@@ -1,14 +1,14 @@
 [build-system]
-requires = ["setuptools", "wheel", "setuptools_scm", "build"]  # Build tools, including setuptools_scm for version control
+requires = ["setuptools", "wheel", "setuptools_scm", "build", "sphinx"] 
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dual_autodiff"  # Package name
-dynamic = ["version"]  # Use setuptools_scm for automatic versioning
+name = "dual_autodiff"
+dynamic = ["version"]  
 description = "A Python package for forward-mode automatic differentiation using dual numbers."
-readme = "README.md"  # Path to the README file for project documentation
-requires-python = ">=3.9"  # Minimum Python version required
-license = { text = "MIT" }  # License type
+readme = "README.md"  
+requires-python = ">=3.9" 
+license = { text = "MIT" } 
 authors = [
     { name = "Jacob Tutt", email = "jacobtutt@icloud.com" }
 ]

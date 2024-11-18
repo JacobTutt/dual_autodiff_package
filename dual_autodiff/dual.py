@@ -88,23 +88,23 @@ class Dual:
             TypeError: If 'other' is not a Dual, int, or float.
 
         Examples:
-            1. Dual + Dual:
+        1. Dual + Dual:
             >>> x = Dual(2, 1)
             >>> y = Dual(3, 2)
             >>> x + y
             Dual(real=5, dual=3)
 
-            2. Dual + scalar:
+        2. Dual + scalar:
             >>> x = Dual(2, 1)
             >>> x + 3
             Dual(real=5, dual=1)
 
-            3. Scalar + Dual:
+        3. Scalar + Dual:
             >>> x = Dual(2, 1)
             >>> 3 + x
             Dual(real=5, dual=1)
 
-            4. Invalid input:
+        4. Invalid input:
             >>> x = Dual(2, 1)
             >>> x + "string"
             Traceback (most recent call last):
@@ -159,23 +159,23 @@ class Dual:
             TypeError: If 'other' is not a Dual, int, or float.
 
         Examples:
-            1. Dual - Dual:
+        1. Dual - Dual:
             >>> x = Dual(5, 3)
             >>> y = Dual(2, 1)
             >>> x - y
             Dual(real=3, dual=2)
 
-            2. Dual - scalar:
+        2. Dual - scalar:
             >>> x = Dual(5, 3)
             >>> x - 2
             Dual(real=3, dual=3)
 
-            3. Scalar - Dual:
+        3. Scalar - Dual:
             >>> x = Dual(5, 3)
             >>> 10 - x
             Dual(real=5, dual=-3)
 
-            4. Invalid input:
+        4. Invalid input:
             >>> x = Dual(5, 3)
             >>> x - "string"
             Traceback (most recent call last):
@@ -230,23 +230,23 @@ class Dual:
             TypeError: If 'other' is not a Dual, int, or float.
 
         Examples:
-            1. Dual * Dual:
+        1. Dual * Dual:
             >>> x = Dual(5, 3)
             >>> y = Dual(2, 1)
             >>> x * y
             Dual(real=10, dual=11)
 
-            2. Dual * scalar:
+        2. Dual * scalar:
             >>> x = Dual(5, 3)
             >>> x * 2
             Dual(real=10, dual=6)
 
-            3. Scalar * Dual:
+        3. Scalar * Dual:
             >>> x = Dual(5, 3)
             >>> 2 * x
             Dual(real=10, dual=6)
 
-            4. Invalid input:
+        4. Invalid input:
             >>> x = Dual(5, 3)
             >>> x * "string"
             Traceback (most recent call last):
@@ -300,23 +300,23 @@ class Dual:
             ZeroDivisionError: If dividing by zero (in the real part for Dual, or scalar zero).
 
         Examples:
-            1. Dual / Dual:
+        1. Dual / Dual:
             >>> x = Dual(6, 4)
             >>> y = Dual(2, 1)
             >>> x / y
             Dual(real=3.0, dual=0.5)
 
-            2. Dual / scalar:
+        2. Dual / scalar:
             >>> x = Dual(6, 4)
             >>> x / 2
             Dual(real=3.0, dual=2.0)
 
-            3. Scalar / Dual:
+        3. Scalar / Dual:
             >>> x = Dual(6, 4)
             >>> 12 / x
             Dual(real=2.0, dual=-1.3333...)
 
-            4. Invalid input:
+        4. Invalid input:
             >>> x = Dual(6, 4)
             >>> y = Dual(0, 1)
             >>> x / y
@@ -357,7 +357,125 @@ class Dual:
             return Dual(real_part, dual_part)
         else:
             raise TypeError("Division is only supported with Dual or scalar values.")
-        
+    
+    # Overwrites the equality operator for Dual numbers by comparing real and dual parts
+    # Allows tolerance of 1e-9 for floating point comparison
+    def __eq__(self, other):
+        """
+        Check equality between two Dual objects.
+
+        Parameters:
+            other (Dual): The Dual number to compare against.
+
+        Returns:
+            bool: True if both the real and dual parts are equal, False otherwise.
+
+        Raises:
+            TypeError: If `other` is not an instance of Dual.
+        """
+
+        # If not comparing Dual numbers - throw 'TypeError'
+        if not isinstance(other, Dual):
+            raise TypeError(f"Equality comparison is only supported between Dual objects, got {type(other).__name__}.")
+        return math.isclose(self.real, other.real, rel_tol=1e-9) and math.isclose(self.dual, other.dual, rel_tol=1e-9)
+
+
+    # Overwrites the inequality operator for Dual numbers by comparing real and dual parts
+    def __ne__(self, other):
+        """
+        Check inequality between two Dual objects.
+
+        Parameters:
+            other (Dual): The Dual number to compare against.
+
+        Returns:
+            bool: True if either the real or dual parts are not equal, False otherwise.
+
+        Raises:
+            TypeError: If `other` is not an instance of Dual.
+        """
+
+        # If not comparing Dual numbers - throw 'TypeError'
+        if not isinstance(other, Dual):
+            raise TypeError(f"Inequality comparison is only supported between Dual objects, got {type(other).__name__}.")
+        return not self.__eq__(other)
+
+    # Overwrites the 'less than' operator for Dual numbers by comparing real and dual parts
+    def __lt__(self, other):
+        """
+        Check if this Dual object is less than another Dual object (based on real part).
+
+        Parameters:
+            other (Dual): The Dual number to compare against.
+
+        Returns:
+            bool: True if this Dual object is less than the other, False otherwise.
+
+        Raises:
+            TypeError: If `other` is not an instance of Dual.
+        """
+        # If not comparing Dual numbers - throw 'TypeError'
+        if not isinstance(other, Dual):
+            raise TypeError(f"Less than comparison is only supported between Dual objects, got {type(other).__name__}.")
+        return self.real < other.real or (self.real == other.real and self.dual < other.dual)
+
+    # Overwrites the 'less than or equal to' operator for Dual numbers by comparing real and dual parts
+    def __le__(self, other):
+        """
+        Check if this Dual object is less than or equal to another Dual object (based on real part).
+
+        Parameters:
+            other (Dual): The Dual number to compare against.
+
+        Returns:
+            bool: True if this Dual object is less than or equal to the other, False otherwise.
+
+        Raises:
+            TypeError: If `other` is not an instance of Dual.
+        """
+        # If not comparing Dual numbers - throw 'TypeError'
+        if not isinstance(other, Dual):
+            raise TypeError(f"Less than or equal comparison is only supported between Dual objects, got {type(other).__name__}.")
+        return self.real < other.real or (self.real == other.real and self.dual <= other.dual)
+    
+    # Overwrites the 'greater than' operator for Dual numbers by comparing real and dual parts
+    def __gt__(self, other):
+        """
+        Check if this Dual object is greater than another Dual object (based on real part).
+
+        Parameters:
+            other (Dual): The Dual number to compare against.
+
+        Returns:
+            bool: True if this Dual object is greater than the other, False otherwise.
+
+        Raises:
+            TypeError: If `other` is not an instance of Dual.
+        """
+        # If not comparing Dual numbers - throw 'TypeError'
+        if not isinstance(other, Dual):
+            raise TypeError(f"Greater than comparison is only supported between Dual objects, got {type(other).__name__}.")
+        return self.real > other.real or (self.real == other.real and self.dual > other.dual)
+
+    # Overwrites the 'greater than or equal to' operator for Dual numbers by comparing real and dual parts
+    def __ge__(self, other):
+        """
+        Check if this Dual object is greater than or equal to another Dual object (based on real part).
+
+        Parameters:
+            other (Dual): The Dual number to compare against.
+
+        Returns:
+            bool: True if this Dual object is greater than or equal to the other, False otherwise.
+
+        Raises:
+            TypeError: If `other` is not an instance of Dual.
+        """
+        # If not comparing Dual numbers - throw 'TypeError'
+        if not isinstance(other, Dual):
+            raise TypeError(f"Greater than or equal comparison is only supported between Dual objects, got {type(other).__name__}.")
+        return self.real > other.real or (self.real == other.real and self.dual >= other.dual)
+
 
 
     # Defines a generic function implementing the preperty of dual numbers
