@@ -358,6 +358,35 @@ class Dual:
         else:
             raise TypeError("Division is only supported with Dual or scalar values.")
     
+
+    # Overwrites the power operator for Dual numbers
+    def __pow__(self, n):
+        """
+        Compute the power of the Dual number.
+
+        Parameters:
+            n (float or int): The exponent.
+
+        Returns:
+            Dual: The Dual number raised to the power `n`.
+
+        Raises:
+            TypeError: If `n` is not a float or int.
+
+        Examples:
+            >>> x = Dual(2, 1)
+            >>> x**2
+            Dual(real=4.0, dual=4.0)
+        """
+        # If power is not an int or float - throw 'TypeError'
+        if not isinstance(n, (int, float)):
+            raise TypeError(f"Power must be an int or float.")
+
+        real_part = self.real**n
+        dual_part = n * self.real**(n - 1) * self.dual
+        return Dual(real_part, dual_part)
+    
+
     # Overwrites the equality operator for Dual numbers by comparing real and dual parts
     # Allows tolerance of 1e-9 for floating point comparison
     def __eq__(self, other):

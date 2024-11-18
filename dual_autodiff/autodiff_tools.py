@@ -332,12 +332,12 @@ def pow(x, n):
 
 # Evaluates a function on a dual number and returns the dual part of result
 # Corrosponds to derivative - ie preforms automatic differentiation
-def auto_diff(f, x):
+def auto_diff(func, x):
     """
-    Evaluates the derivative of a function `f` at `x` using Dual numbers.
+    Evaluates the derivative of a function f at x using Dual number: x + ε.
 
     Parameters:
-        f (callable): The function to differentiate.
+        func (callable): The function to differentiate.
         x (float): The point where the derivative is evaluated.
 
     Returns:
@@ -345,7 +345,7 @@ def auto_diff(f, x):
 
     Raises:
         TypeError: If f is not callable
-        TypeError: If input x a Dual, float, or int.
+        TypeError: If input x a float, or int.
 
     Examples:
         >>> from dual_autodiff import auto_diff
@@ -353,10 +353,18 @@ def auto_diff(f, x):
         5.0
     """
     # Validate that f is callable function 
-    if not callable(f):
-        raise TypeError(f"function must be a callable function, got {type(f).__name__}.")
+    if not callable(func):
+        raise TypeError(f"function must be a callable function, got {type(func).__name__}.")
 
-    # Validate that input x is a `Dual` or scalar (float/ int)
+    # Validate that input x is a or scalar (float/ int)
     if not isinstance(x, (Dual, float, int)):
-        raise TypeError(f"x must be a `Dual` number, float, or int, got {type(x).__name__}.")
-    return f(Dual(x, 1)).dual
+        raise TypeError(f"x must be a scalar number (float/int), got {type(x).__name__}.")
+    
+    value = func(Dual(x, 1))
+
+    # This accounts for the case in which the function is constant and therefore resturns a constant non dual number
+    # Assumes this is the case and creates a dual number with derivative 0
+    if not isinstance(value, Dual):
+        value = Dual(value, 0)
+        
+    return value.dual
