@@ -623,7 +623,7 @@ class Dual:
     
     # Defines arcsin() operator using _dual_function
     # Derivative: 1/sqrt(1-x^2)
-    def arcsin(self):
+    def asin(self):
         """
         Compute the arcsine (inverse sine) of the Dual number.
 
@@ -653,7 +653,7 @@ class Dual:
     
     # Defines arccos() operator using _dual_function
     # Derivative: -1/sqrt(1-x^2)
-    def arccos(self):
+    def acos(self):
         """
         Compute the arccosine (inverse cosine) of the Dual number.
 
@@ -682,7 +682,7 @@ class Dual:
 
     # Defines arctan() operator using _dual_function
     # Derivative: 1/sqrt(1+x^2)
-    def arctan(self):
+    def atan(self):
         """
         Compute the arctangent (inverse tangent) of the Dual number.
 
