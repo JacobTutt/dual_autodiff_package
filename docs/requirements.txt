@@ -1,10 +1,13 @@
 sphinx-rtd-theme==0.5.2
-readthedocs-sphinx-ext
 nbsphinx==0.8.6
-ipython
-Pygments==2.15.0
 sphinxcontrib-bibtex>=2.1
-sphinxcontrib-svg2pdfconverter
-sphinx-gallery
+sphinxcontrib-svg2pdfconverte>=1.2.3  # SVG to PDF conversion for LaTeX builds
+sphinx-gallery>=0.10.0
 sphinx>=5.0
 sphinxcontrib-applehelp
+sphinx-autodoc-typehints>=1.21.0 
+nbsphinx>=0.8.6
+myst-parser>=0.18.0                 
+readthedocs-sphinx-ext>=2.2.5        
+ipython>=8.18.1
+Pygments>=2.15.0
