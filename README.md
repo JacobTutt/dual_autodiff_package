@@ -71,26 +71,26 @@ from dual_autodiff import Dual
 ### Basic Examples
 ```python
 ## Initialise two dual numbers x, y
-x = Dual(2, 1)  # Dual number: 2 + 1ε
-y = Dual(3, 2)  # Dual number: 3 + 2ε
+x = Dual(2, 1)   # Dual number: 2 + 1ε
+y = Dual(3, 2)   # Dual number: 3 + 2ε
 
 # Arithmetic Operations
-print(x + y)    # Dual(real=5, dual=3)
-print(x - y)    # Dual(real=-1, dual=-1)
-print(x * y)    # Dual(real=6, dual=7)
-print(x / y)    # Dual(real=0.666..., dual=-0.222...)
+print(x + y)     # Dual(real=5, dual=3)
+print(x - y)     # Dual(real=-1, dual=-1)
+print(x * y)     # Dual(real=6, dual=7)
+print(x / y)     # Dual(real=0.666..., dual=-0.222...)
 
 # Mathematical Functions in Class
-print(x.sin())  # Dual(real=0.9092..., dual=-0.4161...)
-print(x.log())  # Dual(real=0.6931..., dual=0.5)
+print(x.sin())   # Dual(real=0.9092..., dual=-0.4161...)
+print(x.log())   # Dual(real=0.6931..., dual=0.5)
 
 ## Mathematical Functions using Math operators
-print(pow(x,n))
-print(atan(x))
+print(pow(x, n)) # Dual(real=8.0, dual=12.0)
+print(atan(x))   # Dual(real=1.1071487177940904, dual=0.2)
 
-## Automatic Differentiation
+## Automatic Differentiation 
 func = x**2 + 3*x
-print(auto_diff(func, 5))
+print(auto_diff(func, 5)) # 13.0
 ```
 - For more comprehensive examples see: **dual_autodiff_tutorial** in the notebooks directory
 
