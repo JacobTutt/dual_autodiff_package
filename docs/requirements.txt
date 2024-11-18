@@ -7,3 +7,5 @@ Pygments==2.15.0
 sphinxcontrib-bibtex>=2.1
 sphinxcontrib-svg2pdfconverter
 sphinx-gallery
+sphinx>=5.0
+sphinxcontrib-applehelp
