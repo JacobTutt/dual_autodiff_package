@@ -24,11 +24,6 @@ setup(
         "wheel",
         "Cython",
     ],
-    extras_require={
-        "testing": ["pytest"],
-        "docs": ["sphinx", "nbsphinx", "jupyter"],
-        "cython": ["cython"],
-    },
 
     classifiers=[
         "Programming Language :: Python :: 3",
