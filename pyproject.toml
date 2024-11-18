@@ -23,19 +23,21 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-dependencies = []  # Add runtime dependencies here as you develop the package
+dependencies = []  
 
 [project.optional-dependencies]
 tutorial = ["numpy", "nbsphinx", "jupyter"]
+testing = ["pytest"]
+
 
 [project.urls]
-"Source" = "https://github.com/JacobTutt/dual_autodiff"  # Repository URL
-"Issues" = "https://github.com/JacobTutt/dual_autodiff/issues"  # Issue tracker URL
+"Source" = "https://github.com/JacobTutt/dual_autodiff"  
+"Issues" = "https://github.com/JacobTutt/dual_autodiff/issues" 
 
 [tool.setuptools_scm]
-version_scheme = "post-release"  # Scheme for version numbering
-local_scheme = "no-local-version"  # Do not add local metadata to the version
-write_to = "dual_autodiff/version.py"  # Automatically write the resolved version to this file
+version_scheme = "post-release"  
+local_scheme = "no-local-version"  
+write_to = "dual_autodiff/version.py"  
 
 [tool.setuptools.packages.find]
 where = ["."]
