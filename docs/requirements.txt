@@ -1,7 +1,7 @@
 sphinx-rtd-theme==0.5.2
 nbsphinx==0.8.6
 sphinxcontrib-bibtex>=2.1
-sphinxcontrib-svg2pdfconverte>=1.2.3  # SVG to PDF conversion for LaTeX builds
+sphinxcontrib-svg2pdfconverte>=1.2.3
 sphinx-gallery>=0.10.0
 sphinx>=5.0
 sphinxcontrib-applehelp
