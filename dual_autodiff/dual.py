@@ -779,16 +779,23 @@ class Dual:
         Compute the Dual number raised to a power n.
 
         Parameters:
-            n (float): The power to which the Dual number is raised.
+            n (float or int): The power to which the Dual number is raised.
 
         Returns:
             Dual: The original dual number raised to the given power.
+
+        Raises:
+            TypeError: If n is not an int or float.
 
         Examples:
             >>> x = Dual(2, 1)
             >>> x.pow(3)
             Dual(real=8.0, dual=12.0)
         """
+        # Validate the input type of n
+        if not isinstance(n, (int, float)):
+            raise TypeError(f"Power must be an int or float, got {type(n).__name__}.")
+        
         return self._dual_function(lambda x: x**n, lambda x: n * x**(n-1))
 
 
