@@ -37,7 +37,7 @@ $$
   - Powers and roots: `pow`, `sqrt`.
 - **Automatic Differentiation**: Compute derivatives automatically using the properties of dual numbers.
   - `auto_diff(func, value)`
-- **dual_autodiff_tutorial**: A comprehensive Jupyter Notebook showcasing the features and usage of the package.
+- **dual_autodiff**: A comprehensive Jupyter Notebook showcasing the features and usage of the package.
 
 ## Installation
 
@@ -110,7 +110,7 @@ print(auto_diff(func, 5)) # 13.0
 
 ### Documentation
 
-- Please find full documentation at #
+- Please find full documentation at the [Read the Docs Documentation](https://dual-autodiff-package.readthedocs.io/en/latest/)
 
 ## Contributing
 To contribute to this package:
