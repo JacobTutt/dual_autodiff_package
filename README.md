@@ -20,16 +20,16 @@ $$
 - **Machine Learning**: Enabling backpropagation and training of neural networks.
 - **Physics and Engineering**: For solving differential equations.
 
-### Tutorials
-
-For more details see **dual_autodiff.ipynb** under tutorials
-
-
-
 ## Features
 
 - **Dual Numbers**: A class to store dual numbers
-- **Arithmetic Operations** supports use of addition, subtraction, multiplication, and division on dual numbers.
+- **Arithmetic Operations** for dual numbers
+  - Addition, subtraction: `+`, `-`
+  - Multiplication, and division: `*`, `/`
+- **Comparison Operations** for dual numbers
+  - Equal and not equal: `=`, `!=`
+  - Less than (or equal to): `<`, `<=`
+  - Less than (or equal to): `>`, `>=`
 - **Mathematical Functions**:
   - Trigonometric: `sin`, `cos`, `tan`, and their inverses (`arcsin`, `arccos`, `arctan`).
   - Hyperbolic: `sinh`, `cosh`, `tanh`.
@@ -65,9 +65,20 @@ For more details see **dual_autodiff.ipynb** under tutorials
 ## Usage
 
 ### Import the Package
+- Normal python version
 ```python
 from dual_autodiff import Dual
+from dual_autodiff import sin, cos, tan, ...
+from dual_autodiff import auto_diff
 ```
+
+- Cythonized version
+```python
+from dual_autodiff_x import Dual
+from dual_autodiff_x import sin, cos, tan, ...
+from dual_autodiff_x import auto_diff
+```
+
 ### Basic Examples
 ```python
 ## Initialise two dual numbers x, y
@@ -92,7 +103,14 @@ print(atan(x))   # Dual(real=1.1071487177940904, dual=0.2)
 func = x**2 + 3*x
 print(auto_diff(func, 5)) # 13.0
 ```
-- For more comprehensive examples see: **dual_autodiff_tutorial** in the notebooks directory
+
+### More comprehensive Examples
+
+- For more comprehensive examples see: **dual_autodiff.ipynb** in the tutorials folder
+
+### Documentation
+
+- Please find full documentation at #
 
 ## Contributing
 To contribute to this package:
