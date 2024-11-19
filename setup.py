@@ -7,7 +7,7 @@ extensions = [
 ]
 
 setup(
-    name="dual_autodiff",  # Make it the same as in pyproject.toml
+    name="dual_autodiff",  # Jacob make sure it the same as in pyproject.toml
     version="0.1.0",
     description="A Python package for forward-mode automatic differentiation using dual numbers with a Cythonized version for enhanced performance",
     author="Jacob Tutt",

@@ -1,3 +1,6 @@
+Overview
+========
+
 What are Dual Numbers
 ---------------------
 
@@ -58,8 +61,28 @@ Package Features
   - Powers and roots: ``pow``, ``sqrt``.
 - **dual_autodiff_tutorial**: A comprehensive Jupyter Notebook showcasing the features and usage of the package.
 
-Installation
-------------
+- **Dual Numbers**: A class to store dual numbers
+- **Arithmetic Operations** for dual numbers
+  - Addition, subtraction: ``+``, ``-``
+  - Multiplication, and division: ``*``, ``/``
+- **Comparison Operations** for dual numbers
+  - Equal and not equal: ``=``, ``!=``
+  - Less than (or equal to): ``<``, ``<=``
+  - Less than (or equal to): ``>``, ``>=``
+- **Mathematical Functions**:
+  - Trigonometric: ``sin``, ``cos``, ``tan``, and their inverses (``arcsin``, ``arccos``, ``arctan``).
+  - Hyperbolic: ``sinh``, ``cosh``, ``tanh``.
+  - Exponential and logarithmic: ``exp``, ``log``.
+  - Powers and roots: ``pow``, ``sqrt``.
+- **Automatic Differentiation**: Compute derivatives automatically using the properties of dual numbers.
+  - `auto_diff(func, value)`
+- **dual_autodiff**: A comprehensive Jupyter Notebook showcasing the features and usage of the package.
+
+User Guide - Installation
+=========================
+
+Method 1: Build Editable Package
+---------------------------------
 
 1. Clone the repository:
 
@@ -74,7 +97,37 @@ Installation
 
       pip install -e .
 
-3. For the tutorial, install optional dependencies:
+3. Install optional dependencies for the tutorial:
+
+   .. code:: bash
+
+      pip install '.[tutorial]'
+
+Method 2: Use Pre-Built Wheels (Cython)
+---------------------------------------
+
+1. Clone the repository:
+
+   .. code:: bash
+
+      git clone https://github.com/JacobTutt/dual_autodiff_package.git
+      cd dual_autodiff_package
+
+2. Install the specific wheel for your platform and Python version:
+
+   - For ``cp310-manylinux_x86_64`` (Python 3.10 on Linux):
+
+     .. code:: bash
+
+        pip install wheelhouse/dual_autodiff-0.1.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+
+   - For ``cp311-manylinux_x86_64`` (Python 3.11 on Linux):
+
+     .. code:: bash
+
+        pip install wheelhouse/dual_autodiff-0.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+
+3. Install optional dependencies for the tutorial:
 
    .. code:: bash
 
@@ -86,33 +139,145 @@ Usage
 Import the Package
 ~~~~~~~~~~~~~~~~~~
 
+To use the package, simply import it into your Python scripts:
+
 .. code:: python
 
+   import dual_autodiff 
+   import dual_autodiff_x # For Cython converted package when using Method 1
+
+Package Examples
+================
+
+Further indepth examples including errors and exceptions can be found in:
+- **dual_autodiff.ipynb** in the tutorials directory.
+- API Reference section in the documentation.
+
+Initialise Dual Numbers
+-----------------------
+
+.. code:: python
    from dual_autodiff import Dual
-
-Basic Examples
-~~~~~~~~~~~~~~
-
-.. code:: python
-
    ## Initialize two dual numbers x, y
    x = Dual(2, 1)  # Dual number: 2 + 1ε
    y = Dual(3, 2)  # Dual number: 3 + 2ε
 
-   # Arithmetic Operations
-   print(x + y)    # Dual(real=5, dual=3)
-   print(x - y)    # Dual(real=-1, dual=-1)
-   print(x * y)    # Dual(real=6, dual=7)
-   print(x / y)    # Dual(real=0.666..., dual=-0.222...)
+Basic Arithmetic Operations
+----------------------------
 
-   # Mathematical Functions
-   print(x.sin())  # Dual(real=0.9092..., dual=-0.4161...)
-   print(x.log())  # Dual(real=0.6931..., dual=0.5)
+.. code:: python
+
+   ## Addition
+   z = x + y  # Dual number: 5 + 3ε
+   ## Subtraction
+   z = x - y  # Dual number: -1 - 1ε
+   ## Multiplication
+   z = x * y  # Dual number: 6 + 7ε
+   ## Division
+   z = x / y  # Dual number: 2/3 + 1/3ε
+   ## Powers
+   z = x ** 3  # Dual number: 8 + 12ε
+
+Basic Comparison Operations
+----------------------------
+
+.. code:: python
+
+   ## Equal
+   x == y  # False
+   ## Not Equal
+   x != y  # True
+   ## Less Than
+   x < y  # True
+   ## Less Than or Equal To
+   x <= y  # True
+   ## Greater Than
+   x > y  # False
+   ## Greater Than or Equal To
+   x >= y  # False
+
+Mathematical Functions
+----------------------
+- The package both supports mathematical operators from dual class or by importing math functions.
+Directly from the dual class
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
+
+   ## Trigonometric Functions
+   x.sin()  # Dual number: sin(2) + 1cos(2)ε
+   x.cos()  # Dual number: cos(2) - 1sin(2)ε
+   x.tan()  # Dual number: tan(2) + 1sec^2(2)ε
+   ## Inverse Trigonometric Functions
+   x.arcsin()  # Dual number: arcsin(2) + 1/sqrt(1-2^2)ε
+   x.arccos()  # Dual number: arccos(2) - 1/sqrt(1-2^2)ε
+   x.arctan()  # Dual number: arctan(2) + 1/(1+2^2)ε
+   ## Hyperbolic Functions
+   x.sinh()  # Dual number: sinh(2) + 1cosh(2)ε
+   x.cosh()  # Dual number: cosh(2) + 1sinh(2)ε
+   x.tanh()  # Dual number: tanh(2) + 1sech^2(2)ε
+   ## Exponential and Logarithmic Functions
+   x.exp()  # Dual number: exp(2) + 1exp(2)ε
+   x.log()  # Dual number: log(2) + 1/2ε
+   ## Powers and Roots
+   x.pow(3)  # Dual number: 2^3 + 3*2^2ε
+   x.sqrt()  # Dual number: sqrt(2) + 1/(2sqrt(2))ε
+
+Using math functions
+~~~~~~~~~~~~~~~~~~~~
+
+.. code:: python
+   from dual_autodiff import sin, cos, tan, arcsin, arccos, arctan, sinh, cosh, tanh, exp, log, pow, sqrt
+
+   ## Trigonometric Functions
+   sin(x) # Dual number: sin(2) + 1cos(2)ε
+   cos(x) # Dual number: cos(2) - 1sin(2)ε
+   tan(x) # Dual number: tan(2) + 1sec^2(2)ε
+   ## Inverse Trigonometric Functions
+   arcsin(x) # Dual number: arcsin(2) + 1/sqrt(1-2^2)ε
+   arccos(x) # Dual number: arccos(2) - 1/sqrt(1-2^2)ε
+   arctan(x) # Dual number: arctan(2) + 1/(1+2^2)ε
+   ## Hyperbolic Functions
+   sinh(x) # Dual number: sinh(2) + 1cosh(2)ε
+   cosh(x) # Dual number: cosh(2) + 1sinh(2)ε
+   tanh(x) # Dual number: tanh(2) + 1sech^2(2)ε
+   ## Exponential and Logarithmic Functions
+   exp(x) # Dual number: exp(2) + 1exp(2)ε
+   log(x) # Dual number: log(2) + 1/2ε
+   ## Powers and Roots
+   pow(x, 3) # Dual number: 2^3 + 3*2^2ε
+   sqrt(x) # Dual number: sqrt(2) + 1/(2sqrt(2))ε
+
+Automatic Differentiation
+-------------------------
+- Some examples demonstrating how to use the `auto_diff` function from the `dual_autodiff` package to compute derivatives of various functions.
+- The dual_autodiff package current supports a wide range of mathematical functions, but some may be in development. 
+.. code:: python
+
+   from dual_autodiff import auto_diff
+
+   ## Define a function
+   def func(x):
+       return x ** 2
+
+   ## Compute the derivative of the function at x = 2
+   auto_diff(func, 2)  # 4
+
+   def func_2(x):
+       return log(sin(x)) + exp(x)
+
+   ## Compute the derivative of the function at x = 2
+   derivative_at_2 = auto_diff(complex_func, 2)  # cos(2)/sin(2) + exp(2)
+
+
 
 Tutorial Notebook
-~~~~~~~~~~~~~~~~~
+-----------------
 
 For more comprehensive examples, see the **dual_autodiff_tutorial** in the notebooks directory.
+
+Developer Notes:
+================
 
 Contributing
 ------------
