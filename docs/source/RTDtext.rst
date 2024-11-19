@@ -157,6 +157,7 @@ Initialise Dual Numbers
 -----------------------
 
 .. code:: python
+
    from dual_autodiff import Dual
    ## Initialize two dual numbers x, y
    x = Dual(2, 1)  # Dual number: 2 + 1ε
@@ -198,7 +199,9 @@ Basic Comparison Operations
 
 Mathematical Functions
 ----------------------
+
 - The package both supports mathematical operators from dual class or by importing math functions.
+
 Directly from the dual class
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -227,6 +230,7 @@ Using math functions
 ~~~~~~~~~~~~~~~~~~~~
 
 .. code:: python
+
    from dual_autodiff import sin, cos, tan, arcsin, arccos, arctan, sinh, cosh, tanh, exp, log, pow, sqrt
 
    ## Trigonometric Functions
@@ -250,8 +254,10 @@ Using math functions
 
 Automatic Differentiation
 -------------------------
+
 - Some examples demonstrating how to use the `auto_diff` function from the `dual_autodiff` package to compute derivatives of various functions.
 - The dual_autodiff package current supports a wide range of mathematical functions, but some may be in development. 
+
 .. code:: python
 
    from dual_autodiff import auto_diff
