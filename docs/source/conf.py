@@ -7,12 +7,16 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 import os
 import sys
+from setuptools_scm import get_version
+
 sys.path.insert(0, os.path.abspath('../../'))
 sys.path.insert(0, os.path.abspath('../../tutorials'))
+
 project = 'dual_autodiff'
 copyright = '2024, Jacob Tutt'
 author = 'Jacob Tutt'
-release = '0.0.post16'
+
+release = get_version(root='../../', relative_to=__file__)
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
