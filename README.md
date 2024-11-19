@@ -8,9 +8,8 @@
 ie. consider $f(x) = x^2$:
 - Input: Dual number - $x + \epsilon$
 - Output: 
-$$
-f(x) = (x + \epsilon)^2 = x^2 + 2x\epsilon
-$$
+
+$$f(x) = (x + \epsilon)^2 = x^2 + 2x\epsilon$$
 
 - $x^2$: Outputs real value - the functions value
 - $2x$: Outputs dual value - the functions derivative
