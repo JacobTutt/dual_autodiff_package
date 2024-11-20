@@ -131,11 +131,8 @@ class Dual:
         
     # This overwrites the reverse addition opertor to support int/float + dual
     # a + (c+dε) = (a+c) + dε
-    def __radd__(self, other):
-        if isinstance(other, (int, float)):
-            return self.__add__(other)
-        else:
-            raise TypeError("Addition failed as only supported with Dual or scalar values.")
+    # Can be used as commutative
+    __radd__ = __add__
     
 
 
@@ -275,11 +272,8 @@ class Dual:
         
     # This overwrites the reverse multiplication opertor to support int/float * dual
     # a - (c+dε) = (a-c) - dε
-    def __rmul__(self, other):
-        if isinstance(other, (int, float)):
-            return self.__mul__(other)
-        else:
-            raise TypeError("Multiplication failed as only supported with Dual or scalar values.")
+    # Can be used as commutative 
+    __rmul__ = __mul__
     
     
 
