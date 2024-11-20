@@ -42,7 +42,7 @@ local_scheme = "no-local-version"
 write_to = "dual_autodiff/version.py"  
 
 [tool.setuptools.packages.find]
-where = ["dual_autodiff", "dual_autodiff_x"]
+where = ["."]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
