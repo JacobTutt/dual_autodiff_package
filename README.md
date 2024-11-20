@@ -53,12 +53,12 @@ $$f(x) = (x + \epsilon)^2 = x^2 + 2x\epsilon$$
 
 3. For testing, install optional dependencies:
     ```bash
-    pip install .[testing]
+    pip install `.[testing]`
     ```
 
 4. For tutorial, install optional dependencies:
     ```bash
-    pip install .[tutorial]
+    pip install `.[tutorial]`
     ```
 
 ## Usage
@@ -131,13 +131,29 @@ To ensure the package has installed correctly you may want to run the tests for 
 
 1. **Install the package with testing dependencies**:
     ```bash
-    pip install .[testing]
+    pip install `.[testing]`
     ```
 
 2. **Run the tests using `pytest`**:
     ```bash
     pytest
     ```
+
+## Tutorial
+
+To interactively explore the features and usage of the `dual_autodiff` package, you can use the provided tutorial in the Jupyter notebook.
+
+1. **Install the package with tutorial dependencies**:
+    ```bash
+    pip install '.[tutorial]'
+    ```
+
+
+3. **Launch Jupyter Notebook**:
+    ```bash
+    jupyter notebook tutorials/dual_autodiff.ipynb
+    ```
+    - or navigate to and run using your chosen IDE
 
 ## Documentation
 
