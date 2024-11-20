@@ -10,6 +10,8 @@ setup(
     name="dual_autodiff",  # Jacob make sure it the same as in pyproject.toml
     version="0.1.0",
     description="A Python package for forward-mode automatic differentiation using dual numbers with a Cythonized version for enhanced performance",
+    long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
     author="Jacob Tutt",
     author_email="jacobtutt@icloud.com",
     url="https://github.com/JacobTutt/dual_autodiff",
