@@ -2,7 +2,7 @@
 from .dual import *
 
 # Import version information for the package
-from .version import __version__
+from dual_autodiff.version import __version__
 
 # Import mathematical functions from the compiled extension
 from .autodiff_tools import *

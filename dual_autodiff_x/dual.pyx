@@ -88,6 +88,7 @@ class Dual:
             TypeError: If 'other' is not a Dual, int, or float.
 
         Examples:
+
         1. Dual + Dual:
             >>> x = Dual(2, 1)
             >>> y = Dual(3, 2)
@@ -159,6 +160,7 @@ class Dual:
             TypeError: If 'other' is not a Dual, int, or float.
 
         Examples:
+
         1. Dual - Dual:
             >>> x = Dual(5, 3)
             >>> y = Dual(2, 1)
@@ -230,6 +232,7 @@ class Dual:
             TypeError: If 'other' is not a Dual, int, or float.
 
         Examples:
+
         1. Dual * Dual:
             >>> x = Dual(5, 3)
             >>> y = Dual(2, 1)
@@ -300,6 +303,7 @@ class Dual:
             ZeroDivisionError: If dividing by zero (in the real part for Dual, or scalar zero).
 
         Examples:
+        
         1. Dual / Dual:
             >>> x = Dual(6, 4)
             >>> y = Dual(2, 1)

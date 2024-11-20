@@ -5,7 +5,7 @@
     "distutils": {
         "name": "dual_autodiff_x.autodiff_tools",
         "sources": [
-            "autodiff_tools.pyx"
+            "dual_autodiff_x/autodiff_tools.pyx"
         ]
     },
     "module_name": "dual_autodiff_x.autodiff_tools"
@@ -1479,7 +1479,7 @@ static const char *__pyx_filename;
 /* #### Code section: filename_table ### */
 
 static const char *__pyx_f[] = {
-  "autodiff_tools.pyx",
+  "dual_autodiff_x/autodiff_tools.pyx",
 };
 /* #### Code section: utility_code_proto_before_types ### */
 /* ForceInitThreads.proto */
@@ -2155,7 +2155,6 @@ static const char __pyx_k_sqrt_line_283[] = "sqrt (line 283)";
 static const char __pyx_k_tanh_line_211[] = "tanh (line 211)";
 static const char __pyx_k_asyncio_coroutines[] = "asyncio.coroutines";
 static const char __pyx_k_auto_diff_line_335[] = "auto_diff (line 335)";
-static const char __pyx_k_autodiff_tools_pyx[] = "autodiff_tools.pyx";
 static const char __pyx_k_cline_in_traceback[] = "cline_in_traceback";
 static const char __pyx_k_Compute_the_cosine_of_a_number[] = "\n    Compute the cosine of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The cosine of the input.\n\n    Examples:\n        >>> from dual_autodiff import cos, Dual\n        >>> cos(0)\n        1.0\n        >>> cos(Dual(0, 1))\n        Dual(real=1.0, dual=0.0)\n    ";
 static const char __pyx_k_Compute_the_hyperbolic_sine_of[] = "\n    Compute the hyperbolic sine of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The hyperbolic sine of the input.\n\n    Examples:\n        >>> from dual_autodiff import sinh, Dual\n        >>> sinh(1)\n        1.1752011936438014\n        >>> sinh(Dual(1, 1))\n        Dual(real=1.1752011936438014, dual=1.5430806348152437)\n    ";
@@ -2173,6 +2172,7 @@ static const char __pyx_k_Compute_the_square_root_of_a_nu[] = "\n    Compute the
 static const char __pyx_k_Compute_the_tangent_of_a_number[] = "\n    Compute the tangent of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The tangent of the input.\n\n    Raises:\n        ValueError: The tangent function is undefined as cosine of real part equals 0\n\n    Examples:\n        >>> from dual_autodiff import tan, Dual\n        >>> tan(0)\n        0.0\n        >>> tan(Dual(0, 1))\n        Dual(real=0.0, dual=1.0)\n    ";
 static const char __pyx_k_Evaluates_the_derivative_of_a_f[] = "\n    Evaluates the derivative of a function f at x using Dual number: x + \316\265.\n\n    Parameters:\n        func (callable): The function to differentiate.\n        x (float): The point where the derivative is evaluated.\n\n    Returns:\n        float: The derivative of `f` at `x`.\n\n    Raises:\n        TypeError: If f is not callable\n        TypeError: If input x a float, or int.\n\n    Examples:\n        >>> from dual_autodiff import auto_diff\n        >>> auto_diff(lambda x: x**2 + x, 2)\n        5.0\n    ";
 static const char __pyx_k_x_must_be_a_scalar_number_float[] = "x must be a scalar number (float/int), got ";
+static const char __pyx_k_dual_autodiff_x_autodiff_tools_p[] = "dual_autodiff_x/autodiff_tools.pyx";
 static const char __pyx_k_function_must_be_a_callable_func[] = "function must be a callable function, got ";
 /* #### Code section: decls ### */
 static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_sin(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x); /* proto */
@@ -2245,7 +2245,6 @@ typedef struct {
   PyObject *__pyx_kp_u_atan_line_143;
   PyObject *__pyx_n_s_auto_diff;
   PyObject *__pyx_kp_u_auto_diff_line_335;
-  PyObject *__pyx_kp_s_autodiff_tools_pyx;
   PyObject *__pyx_n_s_cline_in_traceback;
   PyObject *__pyx_n_s_cos;
   PyObject *__pyx_kp_u_cos_line_45;
@@ -2253,6 +2252,7 @@ typedef struct {
   PyObject *__pyx_kp_u_cosh_line_189;
   PyObject *__pyx_n_s_dual;
   PyObject *__pyx_n_s_dual_autodiff_x_autodiff_tools;
+  PyObject *__pyx_kp_s_dual_autodiff_x_autodiff_tools_p;
   PyObject *__pyx_n_s_exp;
   PyObject *__pyx_kp_u_exp_line_235;
   PyObject *__pyx_n_s_func;
@@ -2382,7 +2382,6 @@ static int __pyx_m_clear(PyObject *m) {
   Py_CLEAR(clear_module_state->__pyx_kp_u_atan_line_143);
   Py_CLEAR(clear_module_state->__pyx_n_s_auto_diff);
   Py_CLEAR(clear_module_state->__pyx_kp_u_auto_diff_line_335);
-  Py_CLEAR(clear_module_state->__pyx_kp_s_autodiff_tools_pyx);
   Py_CLEAR(clear_module_state->__pyx_n_s_cline_in_traceback);
   Py_CLEAR(clear_module_state->__pyx_n_s_cos);
   Py_CLEAR(clear_module_state->__pyx_kp_u_cos_line_45);
@@ -2390,6 +2389,7 @@ static int __pyx_m_clear(PyObject *m) {
   Py_CLEAR(clear_module_state->__pyx_kp_u_cosh_line_189);
   Py_CLEAR(clear_module_state->__pyx_n_s_dual);
   Py_CLEAR(clear_module_state->__pyx_n_s_dual_autodiff_x_autodiff_tools);
+  Py_CLEAR(clear_module_state->__pyx_kp_s_dual_autodiff_x_autodiff_tools_p);
   Py_CLEAR(clear_module_state->__pyx_n_s_exp);
   Py_CLEAR(clear_module_state->__pyx_kp_u_exp_line_235);
   Py_CLEAR(clear_module_state->__pyx_n_s_func);
@@ -2497,7 +2497,6 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
   Py_VISIT(traverse_module_state->__pyx_kp_u_atan_line_143);
   Py_VISIT(traverse_module_state->__pyx_n_s_auto_diff);
   Py_VISIT(traverse_module_state->__pyx_kp_u_auto_diff_line_335);
-  Py_VISIT(traverse_module_state->__pyx_kp_s_autodiff_tools_pyx);
   Py_VISIT(traverse_module_state->__pyx_n_s_cline_in_traceback);
   Py_VISIT(traverse_module_state->__pyx_n_s_cos);
   Py_VISIT(traverse_module_state->__pyx_kp_u_cos_line_45);
@@ -2505,6 +2504,7 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
   Py_VISIT(traverse_module_state->__pyx_kp_u_cosh_line_189);
   Py_VISIT(traverse_module_state->__pyx_n_s_dual);
   Py_VISIT(traverse_module_state->__pyx_n_s_dual_autodiff_x_autodiff_tools);
+  Py_VISIT(traverse_module_state->__pyx_kp_s_dual_autodiff_x_autodiff_tools_p);
   Py_VISIT(traverse_module_state->__pyx_n_s_exp);
   Py_VISIT(traverse_module_state->__pyx_kp_u_exp_line_235);
   Py_VISIT(traverse_module_state->__pyx_n_s_func);
@@ -2622,7 +2622,6 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
 #define __pyx_kp_u_atan_line_143 __pyx_mstate_global->__pyx_kp_u_atan_line_143
 #define __pyx_n_s_auto_diff __pyx_mstate_global->__pyx_n_s_auto_diff
 #define __pyx_kp_u_auto_diff_line_335 __pyx_mstate_global->__pyx_kp_u_auto_diff_line_335
-#define __pyx_kp_s_autodiff_tools_pyx __pyx_mstate_global->__pyx_kp_s_autodiff_tools_pyx
 #define __pyx_n_s_cline_in_traceback __pyx_mstate_global->__pyx_n_s_cline_in_traceback
 #define __pyx_n_s_cos __pyx_mstate_global->__pyx_n_s_cos
 #define __pyx_kp_u_cos_line_45 __pyx_mstate_global->__pyx_kp_u_cos_line_45
@@ -2630,6 +2629,7 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
 #define __pyx_kp_u_cosh_line_189 __pyx_mstate_global->__pyx_kp_u_cosh_line_189
 #define __pyx_n_s_dual __pyx_mstate_global->__pyx_n_s_dual
 #define __pyx_n_s_dual_autodiff_x_autodiff_tools __pyx_mstate_global->__pyx_n_s_dual_autodiff_x_autodiff_tools
+#define __pyx_kp_s_dual_autodiff_x_autodiff_tools_p __pyx_mstate_global->__pyx_kp_s_dual_autodiff_x_autodiff_tools_p
 #define __pyx_n_s_exp __pyx_mstate_global->__pyx_n_s_exp
 #define __pyx_kp_u_exp_line_235 __pyx_mstate_global->__pyx_kp_u_exp_line_235
 #define __pyx_n_s_func __pyx_mstate_global->__pyx_n_s_func
@@ -6202,7 +6202,6 @@ static int __Pyx_CreateStringTabAndInitStrings(void) {
     {&__pyx_kp_u_atan_line_143, __pyx_k_atan_line_143, sizeof(__pyx_k_atan_line_143), 0, 1, 0, 0},
     {&__pyx_n_s_auto_diff, __pyx_k_auto_diff, sizeof(__pyx_k_auto_diff), 0, 0, 1, 1},
     {&__pyx_kp_u_auto_diff_line_335, __pyx_k_auto_diff_line_335, sizeof(__pyx_k_auto_diff_line_335), 0, 1, 0, 0},
-    {&__pyx_kp_s_autodiff_tools_pyx, __pyx_k_autodiff_tools_pyx, sizeof(__pyx_k_autodiff_tools_pyx), 0, 0, 1, 0},
     {&__pyx_n_s_cline_in_traceback, __pyx_k_cline_in_traceback, sizeof(__pyx_k_cline_in_traceback), 0, 0, 1, 1},
     {&__pyx_n_s_cos, __pyx_k_cos, sizeof(__pyx_k_cos), 0, 0, 1, 1},
     {&__pyx_kp_u_cos_line_45, __pyx_k_cos_line_45, sizeof(__pyx_k_cos_line_45), 0, 1, 0, 0},
@@ -6210,6 +6209,7 @@ static int __Pyx_CreateStringTabAndInitStrings(void) {
     {&__pyx_kp_u_cosh_line_189, __pyx_k_cosh_line_189, sizeof(__pyx_k_cosh_line_189), 0, 1, 0, 0},
     {&__pyx_n_s_dual, __pyx_k_dual, sizeof(__pyx_k_dual), 0, 0, 1, 1},
     {&__pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_k_dual_autodiff_x_autodiff_tools, sizeof(__pyx_k_dual_autodiff_x_autodiff_tools), 0, 0, 1, 1},
+    {&__pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_k_dual_autodiff_x_autodiff_tools_p, sizeof(__pyx_k_dual_autodiff_x_autodiff_tools_p), 0, 0, 1, 0},
     {&__pyx_n_s_exp, __pyx_k_exp, sizeof(__pyx_k_exp), 0, 0, 1, 1},
     {&__pyx_kp_u_exp_line_235, __pyx_k_exp_line_235, sizeof(__pyx_k_exp_line_235), 0, 1, 0, 0},
     {&__pyx_n_s_func, __pyx_k_func, sizeof(__pyx_k_func), 0, 0, 1, 1},
@@ -6278,7 +6278,7 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
   __pyx_tuple__2 = PyTuple_Pack(1, __pyx_n_s_x); if (unlikely(!__pyx_tuple__2)) __PYX_ERR(0, 23, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__2);
   __Pyx_GIVEREF(__pyx_tuple__2);
-  __pyx_codeobj__3 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_autodiff_tools_pyx, __pyx_n_s_sin, 23, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__3)) __PYX_ERR(0, 23, __pyx_L1_error)
+  __pyx_codeobj__3 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_sin, 23, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__3)) __PYX_ERR(0, 23, __pyx_L1_error)
 
   /* "dual_autodiff_x/autodiff_tools.pyx":45
  * 
@@ -6287,7 +6287,7 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
  *     """
  *     Compute the cosine of a number or a Dual number.
  */
-  __pyx_codeobj__4 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_autodiff_tools_pyx, __pyx_n_s_cos, 45, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__4)) __PYX_ERR(0, 45, __pyx_L1_error)
+  __pyx_codeobj__4 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_cos, 45, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__4)) __PYX_ERR(0, 45, __pyx_L1_error)
 
   /* "dual_autodiff_x/autodiff_tools.pyx":67
  * 
@@ -6296,7 +6296,7 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
  *     """
  *     Compute the tangent of a number or a Dual number.
  */
-  __pyx_codeobj__5 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_autodiff_tools_pyx, __pyx_n_s_tan, 67, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__5)) __PYX_ERR(0, 67, __pyx_L1_error)
+  __pyx_codeobj__5 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_tan, 67, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__5)) __PYX_ERR(0, 67, __pyx_L1_error)
 
   /* "dual_autodiff_x/autodiff_tools.pyx":93
  * # Call Dual's arcsin() method
@@ -6305,7 +6305,7 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
  *     """
  *     Compute the arcsine of a number or a Dual number.
  */
-  __pyx_codeobj__6 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_autodiff_tools_pyx, __pyx_n_s_asin, 93, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__6)) __PYX_ERR(0, 93, __pyx_L1_error)
+  __pyx_codeobj__6 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_asin, 93, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__6)) __PYX_ERR(0, 93, __pyx_L1_error)
 
   /* "dual_autodiff_x/autodiff_tools.pyx":118
  * 
@@ -6314,7 +6314,7 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
  *     """
  *     Compute the arccosine of a number or a Dual number.
  */
-  __pyx_codeobj__7 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_autodiff_tools_pyx, __pyx_n_s_acos, 118, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__7)) __PYX_ERR(0, 118, __pyx_L1_error)
+  __pyx_codeobj__7 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_acos, 118, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__7)) __PYX_ERR(0, 118, __pyx_L1_error)
 
   /* "dual_autodiff_x/autodiff_tools.pyx":143
  * 
@@ -6323,7 +6323,7 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
  *     """
  *     Compute the arctangent of a number or a Dual number.
  */
-  __pyx_codeobj__8 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_autodiff_tools_pyx, __pyx_n_s_atan, 143, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__8)) __PYX_ERR(0, 143, __pyx_L1_error)
+  __pyx_codeobj__8 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_atan, 143, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__8)) __PYX_ERR(0, 143, __pyx_L1_error)
 
   /* "dual_autodiff_x/autodiff_tools.pyx":165
  * 
@@ -6332,7 +6332,7 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
  *     """
  *     Compute the hyperbolic sine of a number or a Dual number.
  */
-  __pyx_codeobj__9 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_autodiff_tools_pyx, __pyx_n_s_sinh, 165, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__9)) __PYX_ERR(0, 165, __pyx_L1_error)
+  __pyx_codeobj__9 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_sinh, 165, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__9)) __PYX_ERR(0, 165, __pyx_L1_error)
 
   /* "dual_autodiff_x/autodiff_tools.pyx":189
  * # Call Dual's cosh() method
@@ -6341,7 +6341,7 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
  *     """
  *     Compute the hyperbolic cosine of a number or a Dual number.
  */
-  __pyx_codeobj__10 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_autodiff_tools_pyx, __pyx_n_s_cosh, 189, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__10)) __PYX_ERR(0, 189, __pyx_L1_error)
+  __pyx_codeobj__10 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_cosh, 189, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__10)) __PYX_ERR(0, 189, __pyx_L1_error)
 
   /* "dual_autodiff_x/autodiff_tools.pyx":211
  * 
@@ -6350,7 +6350,7 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
  *     """
  *     Compute the hyperbolic tangent of a number or a Dual number.
  */
-  __pyx_codeobj__11 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_autodiff_tools_pyx, __pyx_n_s_tanh, 211, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__11)) __PYX_ERR(0, 211, __pyx_L1_error)
+  __pyx_codeobj__11 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_tanh, 211, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__11)) __PYX_ERR(0, 211, __pyx_L1_error)
 
   /* "dual_autodiff_x/autodiff_tools.pyx":235
  * 
@@ -6359,7 +6359,7 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
  *     """
  *     Compute the exponential of a number or a Dual number.
  */
-  __pyx_codeobj__12 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_autodiff_tools_pyx, __pyx_n_s_exp, 235, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__12)) __PYX_ERR(0, 235, __pyx_L1_error)
+  __pyx_codeobj__12 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_exp, 235, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__12)) __PYX_ERR(0, 235, __pyx_L1_error)
 
   /* "dual_autodiff_x/autodiff_tools.pyx":257
  * 
@@ -6368,7 +6368,7 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
  *     """
  *     Compute the natural logarithm of a number or a Dual number.
  */
-  __pyx_codeobj__13 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_autodiff_tools_pyx, __pyx_n_s_log, 257, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__13)) __PYX_ERR(0, 257, __pyx_L1_error)
+  __pyx_codeobj__13 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_log, 257, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__13)) __PYX_ERR(0, 257, __pyx_L1_error)
 
   /* "dual_autodiff_x/autodiff_tools.pyx":283
  * # Call Dual's sqrt() method
@@ -6377,7 +6377,7 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
  *     """
  *     Compute the square root of a number or a Dual number.
  */
-  __pyx_codeobj__14 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_autodiff_tools_pyx, __pyx_n_s_sqrt, 283, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__14)) __PYX_ERR(0, 283, __pyx_L1_error)
+  __pyx_codeobj__14 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_sqrt, 283, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__14)) __PYX_ERR(0, 283, __pyx_L1_error)
 
   /* "dual_autodiff_x/autodiff_tools.pyx":308
  * 
@@ -6389,7 +6389,7 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
   __pyx_tuple__15 = PyTuple_Pack(2, __pyx_n_s_x, __pyx_n_s_n); if (unlikely(!__pyx_tuple__15)) __PYX_ERR(0, 308, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__15);
   __Pyx_GIVEREF(__pyx_tuple__15);
-  __pyx_codeobj__16 = (PyObject*)__Pyx_PyCode_New(2, 0, 0, 2, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__15, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_autodiff_tools_pyx, __pyx_n_s_pow, 308, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__16)) __PYX_ERR(0, 308, __pyx_L1_error)
+  __pyx_codeobj__16 = (PyObject*)__Pyx_PyCode_New(2, 0, 0, 2, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__15, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_pow, 308, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__16)) __PYX_ERR(0, 308, __pyx_L1_error)
 
   /* "dual_autodiff_x/autodiff_tools.pyx":335
  * # Evaluates a function on a dual number and returns the dual part of result
@@ -6401,7 +6401,7 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
   __pyx_tuple__17 = PyTuple_Pack(3, __pyx_n_s_func, __pyx_n_s_x, __pyx_n_s_value); if (unlikely(!__pyx_tuple__17)) __PYX_ERR(0, 335, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__17);
   __Pyx_GIVEREF(__pyx_tuple__17);
-  __pyx_codeobj__18 = (PyObject*)__Pyx_PyCode_New(2, 0, 0, 3, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__17, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_autodiff_tools_pyx, __pyx_n_s_auto_diff, 335, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__18)) __PYX_ERR(0, 335, __pyx_L1_error)
+  __pyx_codeobj__18 = (PyObject*)__Pyx_PyCode_New(2, 0, 0, 3, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__17, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_auto_diff, 335, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__18)) __PYX_ERR(0, 335, __pyx_L1_error)
   __Pyx_RefNannyFinishContext();
   return 0;
   __pyx_L1_error:;
