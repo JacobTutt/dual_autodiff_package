@@ -6,6 +6,8 @@
 dual_autodiff Package
 ========================
 
+Welcome to the documentation for version |version| of the Dual Autodiff package.
+
 .. toctree::
    :maxdepth: 2
    :caption: Contents:

@@ -1,6 +1,8 @@
 Overview
 ========
 
+
+
 What are Dual Numbers
 ---------------------
 
@@ -81,8 +83,8 @@ Package Features
 User Guide - Installation
 =========================
 
-Method 1: Build Editable Package
----------------------------------
+Method 1: Build Package
+-----------------------
 
 1. Clone the repository:
 
@@ -91,17 +93,11 @@ Method 1: Build Editable Package
       git clone https://github.com/JacobTutt/dual_autodiff_package.git
       cd dual_autodiff_package
 
-2. Install the package in editable mode:
+2. Install the package:
 
    .. code:: bash
 
-      pip install -e .
-
-3. Install optional dependencies for the tutorial:
-
-   .. code:: bash
-
-      pip install '.[tutorial]'
+      pip install .
 
 Method 2: Use Pre-Built Wheels (Cython)
 ---------------------------------------
@@ -127,12 +123,6 @@ Method 2: Use Pre-Built Wheels (Cython)
 
         pip install wheelhouse/dual_autodiff-0.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
 
-3. Install optional dependencies for the tutorial:
-
-   .. code:: bash
-
-      pip install '.[tutorial]'
-
 Usage
 -----
 
@@ -145,6 +135,44 @@ To use the package, simply import it into your Python scripts:
 
    import dual_autodiff 
    import dual_autodiff_x # For Cython converted package when using Method 1
+
+
+Optional package features
+=========================
+
+Testing
+-------
+
+The package includes a test suite to ensure the installation is correct and the package functions as expected.
+
+1. Install optional dependencies for the testing:
+
+   .. code:: bash
+
+      pip install '.[testing]'
+
+2. Run the tests:
+
+   .. code:: bash
+
+      pytest
+
+Tutorial Notebook
+-----------------
+
+The package includes a tutorial notebook to demonstrate the features and usage of the package, the user is encouraged to interact with this notebook to understand the packages functionality, errors it may raise and how to use it effectively.
+
+1. To access the tutorial notebook, install the optional dependencies:
+
+   .. code:: bash
+
+      pip install '.[tutorial]'
+
+2. Open the Jupyter notebook:
+
+   .. code:: bash
+
+      jupyter notebook notebooks/dual_autodiff_tutorial.ipynb
 
 Package Examples
 ================
@@ -258,22 +286,68 @@ Automatic Differentiation
 - Some examples demonstrating how to use the `auto_diff` function from the `dual_autodiff` package to compute derivatives of various functions.
 - The dual_autodiff package current supports a wide range of mathematical functions, but some may be in development. 
 
+Derivative of :math:`f(x) = x^2`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Mathematical Concept
+^^^^^^^^^^^^^^^^^^^^
+
+The derivative of the function :math:`f(x) = x^2` is calculated as follows:
+
+.. math::
+
+   f'(x) = \frac{d}{dx} (x^2) = 2x
+
+So, the derivative at :math:`x = 2` is:
+
+.. math::
+
+   f'(2) = 2 \cdot 2 = 4
+
+Code Example
+^^^^^^^^^^^^
+
+.. code:: python
+
+   from dual_autodiff import auto_diff
+
+   def func(x):
+       return x ** 2
+
+   ## Compute the derivative of the function at x = 2
+   derivative_at_2 = auto_diff(func, 2)  # 4
+
+Derivative of :math:`g(x) = \log(\sin(x)) + \exp(x)`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Mathematical Concept
+^^^^^^^^^^^^^^^^^^^^
+
+The derivative of the function :math:`g(x) = \log(\sin(x)) + \exp(x)`  is calculated as follows:
+
+.. math::
+
+   g'(x) = \frac{d}{dx} (\log(\sin(x)) + \exp(x)) = \frac{\cos(x)}{\sin(x)} + \exp(x) 
+
+So, the derivative at :math:`x = 2``  is:
+
+.. math::
+
+   g'(2) = \frac{\cos(2)}{\sin(2)} + \exp(2) 
+
+Code Example
+^^^^^^^^^^^^
+
 .. code:: python
 
    from dual_autodiff import auto_diff
 
    ## Define a function
-   def func(x):
-       return x ** 2
-
-   ## Compute the derivative of the function at x = 2
-   auto_diff(func, 2)  # 4
-
    def func_2(x):
        return log(sin(x)) + exp(x)
 
    ## Compute the derivative of the function at x = 2
-   derivative_at_2 = auto_diff(complex_func, 2)  # cos(2)/sin(2) + exp(2)
+   derivative_at_2 = auto_diff(func_2, 2)  # cos(2)/sin(2) + exp(2)
 
 
 
@@ -281,6 +355,7 @@ Tutorial Notebook
 -----------------
 
 For more comprehensive examples, see the **dual_autodiff_tutorial** in the notebooks directory.
+- Instructions on how to run the tutorial notebook are provided in the **Usage** section.
 
 Developer Notes:
 ================
