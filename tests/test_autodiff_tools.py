@@ -1,11 +1,12 @@
 import pytest
 import math
 from dual_autodiff import Dual
-from dual_autodiff import sin, cos, tan, sinh, cosh, tanh, exp, log, sqrt, asin, acos, atan, pow
+from dual_autodiff import sin, cos, tan, sinh, cosh, tanh, exp, log, sqrt, arcsin, arccos, arctan, pow
 
 
 # This performs similiar tests to those in the test_dual.py file
 # But instead of calling the methods directly, it calls the functions from the autodiff_tools.py file which are integrated with the math module's functions
+# This test focuses on the the packages interaction with individual Dual items (not numpy)
 
 # Test trigonometric functions
 def test_trig_functions():
@@ -62,23 +63,23 @@ def test_hyperbolic_functions():
 def test_inverse_trig_functions():
     x = Dual(0.5, 1)
 
-    # Test asin function
-    assert math.isclose(asin(x).real, math.asin(0.5))
-    assert math.isclose(asin(x).dual, 1 / math.sqrt(1 - 0.5 ** 2))
+    # Test arcsin function
+    assert math.isclose(arcsin(x).real, math.asin(0.5))
+    assert math.isclose(arcsin(x).dual, 1 / math.sqrt(1 - 0.5 ** 2))
 
     # Test acos function
-    assert math.isclose(acos(x).real, math.acos(0.5))
-    assert math.isclose(acos(x).dual, -1 / math.sqrt(1 - 0.5 ** 2))
+    assert math.isclose(arccos(x).real, math.acos(0.5))
+    assert math.isclose(arccos(x).dual, -1 / math.sqrt(1 - 0.5 ** 2))
 
     # Test atan function
-    assert math.isclose(atan(x).real, math.atan(0.5))
-    assert math.isclose(atan(x).dual, 1 / (1 + 0.5 ** 2))
+    assert math.isclose(arctan(x).real, math.atan(0.5))
+    assert math.isclose(arctan(x).dual, 1 / (1 + 0.5 ** 2))
 
     # Test domain errors
     with pytest.raises(ValueError):
-        asin(Dual(2, 1))
+        arcsin(Dual(2, 1))
     with pytest.raises(ValueError):
-        acos(Dual(-2, 1))
+        arccos(Dual(-2, 1))
 
 
 # Test exponential, logarithmic, and power functions

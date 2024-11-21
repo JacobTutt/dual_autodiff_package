@@ -254,23 +254,23 @@ def test_hyperbolic_functions():
 def test_inverse_trig_functions():
     x = Dual(0.5, 1)
 
-    # Test asin function
-    assert math.isclose(x.asin().real, math.asin(0.5))
-    assert math.isclose(x.asin().dual, 1 / math.sqrt(1 - 0.5 ** 2))
+    # Test arcsin function
+    assert math.isclose(x.arcsin().real, math.asin(0.5))
+    assert math.isclose(x.arcsin().dual, 1 / math.sqrt(1 - 0.5 ** 2))
 
     # Test acos function
-    assert math.isclose(x.acos().real, math.acos(0.5))
-    assert math.isclose(x.acos().dual, -1 / math.sqrt(1 - 0.5 ** 2))
+    assert math.isclose(x.arccos().real, math.acos(0.5))
+    assert math.isclose(x.arccos().dual, -1 / math.sqrt(1 - 0.5 ** 2))
 
     # Test atan function
-    assert math.isclose(x.atan().real, math.atan(0.5))
-    assert math.isclose(x.atan().dual, 1 / (1 + 0.5 ** 2))
+    assert math.isclose(x.arctan().real, math.atan(0.5))
+    assert math.isclose(x.arctan().dual, 1 / (1 + 0.5 ** 2))
 
     # Test domain errors
     with pytest.raises(ValueError):
-        Dual(2, 1).asin()
+        Dual(2, 1).arcsin()
     with pytest.raises(ValueError):
-        Dual(-2, 1).acos()
+        Dual(-2, 1).arccos()
 
 
 # Test exponential, logarithmic, and power functions

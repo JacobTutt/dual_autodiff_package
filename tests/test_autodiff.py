@@ -1,7 +1,7 @@
 import pytest
 import math
 from dual_autodiff import Dual
-from dual_autodiff import sin, cos, tan, sinh, cosh, tanh, exp, log, sqrt, asin, acos, atan, pow
+from dual_autodiff import sin, cos, tan, sinh, cosh, tanh, exp, log, sqrt, arcsin, arccos, arctan, pow
 from dual_autodiff import auto_diff
 
 ##  This tests the actuall auto_diff function
