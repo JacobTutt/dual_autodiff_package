@@ -650,7 +650,7 @@ class Dual:
     
     # Defines arcsin() operator using _dual_function
     # Derivative: 1/sqrt(1-x^2)
-    def asin(self):
+    def arcsin(self):
         """
         Compute the arcsine (inverse sine) of the Dual number.
 
@@ -662,11 +662,11 @@ class Dual:
 
         Examples:
             >>> x = Dual(0.5, 1)
-            >>> x.asin()
+            >>> x.arcsin()
             Dual(real=0.5236..., dual=1.1547...)
 
             >>> x = Dual(1.5, 1)
-            >>> x.asin()
+            >>> x.arcsin()
             Traceback (most recent call last):
                 ...
             ValueError: Arcsine is only defined for real parts in the range [-1, 1].
@@ -680,7 +680,7 @@ class Dual:
     
     # Defines arccos() operator using _dual_function
     # Derivative: -1/sqrt(1-x^2)
-    def acos(self):
+    def arccos(self):
         """
         Compute the arccosine (inverse cosine) of the Dual number.
 
@@ -692,11 +692,11 @@ class Dual:
 
         Examples:
             >>> x = Dual(0.5, 1)
-            >>> x.acos()
+            >>> x.arccos()
             Dual(real=1.0472..., dual=-1.1547...)
 
             >>> x = Dual(-1.5, 1)
-            >>> x.acos()
+            >>> x.arccos()
             Traceback (most recent call last):
                 ...
             ValueError: Arccosine is only defined for real parts in the range [-1, 1].
@@ -709,7 +709,7 @@ class Dual:
 
     # Defines arctan() operator using _dual_function
     # Derivative: 1/sqrt(1+x^2)
-    def atan(self):
+    def arctan(self):
         """
         Compute the arctangent (inverse tangent) of the Dual number.
 
@@ -718,7 +718,7 @@ class Dual:
 
         Examples:
             >>> x = Dual(1, 1)
-            >>> x.atan()
+            >>> x.arctan()
             Dual(real=0.7854..., dual=0.5)
         """
         return self._dual_function(math.atan, lambda x: 1 / (1 + x**2))
@@ -824,5 +824,3 @@ class Dual:
             raise TypeError(f"Power must be an int or float, got {type(n).__name__}.")
         
         return self._dual_function(lambda x: x**n, lambda x: n * x**(n-1))
-
-
