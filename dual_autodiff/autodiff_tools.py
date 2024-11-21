@@ -539,40 +539,59 @@ def pow(x, n):
     return math_pow(x, n)
 
 # Evaluates a function on a dual number and returns the dual part of result
-# Corrosponds to derivative - ie preforms automatic differentiation
+# Corresponds to derivative - ie performs automatic differentiation
 def auto_diff(func, x):
     """
     Evaluates the derivative of a function f at x using Dual number: x + ε.
 
     Parameters:
         func (callable): The function to differentiate.
-        x (float): The point where the derivative is evaluated.
+        x (float, int, or numpy.ndarray): The point(s) where the derivative is evaluated.
 
     Returns:
-        float: The derivative of `f` at `x`.
+        tuple: A tuple containing the real and dual parts of the result.
+               If x is a scalar, returns (real, dual).
+               If x is a numpy array, returns two numpy arrays (real_array, dual_array).
 
     Raises:
-        TypeError: If f is not callable
-        TypeError: If input x a float, or int.
+        TypeError: If func is not callable.
+        TypeError: If input x is not a float, int, or numpy.ndarray containing scalar values.
 
     Examples:
         >>> from dual_autodiff import auto_diff
-        >>> auto_diff(lambda x: x**2 + x, 2)
-        5.0
+    1. With a scalar input:
+        >>> auto_diff(lambda x: x**3 + 2*x**2 + x, 2)
+        (14.0, 17.0)
+    2. With a numpy array input:
+        >>> auto_diff(lambda x: x**3 + 2*x**2 + x, np.array([1, 2, 3]))
+        (array([ 4.0, 14.0, 34.0]), array([ 4.0, 17.0, 40.0]))
     """
-    # Validate that f is callable function 
+    # Check that func is callable
     if not callable(func):
-        raise TypeError(f"function must be a callable function, got {type(func).__name__}.")
+        raise TypeError(f"func must be a callable function, got {type(func).__name__}.")
 
-    # Validate that input x is a or scalar (float/ int)
-    if not isinstance(x, (Dual, float, int)):
-        raise TypeError(f"x must be a scalar number (float/int), got {type(x).__name__}.")
-    
-    value = func(Dual(x, 1))
+    # Check that input x is a scalar (float/int) or numpy array
+    if not isinstance(x, (float, int, np.ndarray)):
+        raise TypeError(f"x must be a scalar number (float/int) or numpy.ndarray, got {type(x).__name__}.")
 
-    # This accounts for the case in which the function is constant and therefore resturns a constant non dual number
-    # Assumes this is the case and creates a dual number with derivative 0
-    if not isinstance(value, Dual):
-        value = Dual(value, 0)
+    if isinstance(x, (float, int)):
+        # If x is a scalar, evaluate the function directly
+        value = func(Dual(x, 1))
+        # This accounts for the case in which the function is constant and therefore returns a constant non-dual number
+        # Assumes this is the case and creates a dual number with derivative 0
+        if not isinstance(value, Dual):
+            value = Dual(value, 0)
+
+    else:
+        # Checks that is x is a numpy array, it contains scalar values
+        if not np.issubdtype(x.dtype, np.number):
+            raise TypeError("numpy.ndarray must contain scalar values (float/int).")
         
-    return value.dual
+        # Compute the real and dual parts
+        # As above accounts for the case in which the function is constant and therefore returns a constant non-dual number
+        real_parts = [func(Dual(float(xi), 1)).real if isinstance(func(Dual(float(xi), 1)), Dual) else func(Dual(xi, 1)) for xi in x]
+        dual_parts = [func(Dual(float(xi), 1)).dual if isinstance(func(Dual(float(xi), 1)), Dual) else 0 for xi in x]
+        
+        return np.array(real_parts), np.array(dual_parts)
+
+    return value.real, value.dual
