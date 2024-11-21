@@ -538,6 +538,7 @@ def pow(x, n):
     # If input is a scalar, call the math.pow method
     return math_pow(x, n)
 
+
 # Evaluates a function on a dual number and returns the dual part of result
 # Corresponds to derivative - ie performs automatic differentiation
 def auto_diff(func, x):
@@ -589,9 +590,48 @@ def auto_diff(func, x):
         
         # Compute the real and dual parts
         # As above accounts for the case in which the function is constant and therefore returns a constant non-dual number
-        real_parts = [func(Dual(float(xi), 1)).real if isinstance(func(Dual(float(xi), 1)), Dual) else func(Dual(xi, 1)) for xi in x]
+        real_parts = [func(Dual(float(xi), 1)).real if isinstance(func(Dual(float(xi), 1)), Dual) else func(Dual(float(xi), 1)) for xi in x]
         dual_parts = [func(Dual(float(xi), 1)).dual if isinstance(func(Dual(float(xi), 1)), Dual) else 0 for xi in x]
         
         return np.array(real_parts), np.array(dual_parts)
 
     return value.real, value.dual
+
+# Evaluates multiple functions value and derivative at x using Dual number/ automatic differentiation
+# Input is a list of functions and a point x/ array of points
+# Returns a list of tuples, each containing the real and dual parts of the result for each function
+# uses auto_diff to evaluate each function
+def multi_auto_diff(funcs, x):
+    """
+    Evaluates the derivatives of multiple functions at x using Dual number: x + ε.
+
+    Parameters:
+        funcs (list of callables): The functions to differentiate.
+        x (float, int, or numpy.ndarray): The point(s) where the derivatives are evaluated.
+
+    Returns:
+        list of tuples: A list of tuples, each containing the real and dual parts of the result for each function.
+                        If x is a scalar, each tuple is (real, dual).
+                        If x is a numpy array, each tuple contains two numpy arrays (real_array, dual_array).
+
+    Raises:
+        TypeError: If any func in funcs is not callable.
+        TypeError: If input x is not a float, int, or numpy.ndarray containing scalar values.
+
+    Examples:
+        >>> from dual_autodiff import multi_auto_diff
+    1. With a scalar input:
+        >>> multi_auto_diff([lambda x: x**3, lambda x: x**2], 2)
+        [(8.0, 12.0), (4.0, 4.0)]
+    2. With a numpy array input:
+        >>> multi_auto_diff([lambda x: x**3, lambda x: x**2], np.array([1, 2, 3]))
+        [(array([ 1.0,  8.0, 27.0]), array([ 3.0, 12.0, 27.0])), (array([1.0, 4.0, 9.0]), array([2.0, 4.0, 6.0]))]
+    """
+    results = []
+    for func in funcs:
+        if not callable(func):
+            raise TypeError(f"Each func must be a callable function, got {type(func).__name__}.")
+        results.append(auto_diff(func, x))
+
+    # output structure: [[func1_f(x)], [func1_f'(x)], [func2_f(x)], [func2_f'(x)], ...]
+    return results 
