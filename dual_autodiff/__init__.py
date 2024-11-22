@@ -25,4 +25,5 @@ __all__ = [
     "sqrt",
     "pow",
     "auto_diff",
+    "multi_auto_diff",
 ]
