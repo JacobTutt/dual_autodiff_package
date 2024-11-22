@@ -1,6 +1,15 @@
 # Dual Numbers in Dual Autodiff Package
 **`dual_autodiff`** is a Python library that enables the use of dual numbers in the aim of preforming automatic differentiation.
 
+### Recent Updates - Version v1.1.0
+
+The recent release of `dual_autodiff` provides extensive integration with `numpy` arrays, allowing the user to seamlessly work with arrays of dual numbers.
+
+- **Enhanced Mathematical Functions**: All mathematical functions such as `sin`, `cos`, `tan`, `exp`, `log`, `sqrt`, and more are now fully compatible with `numpy` arrays of dual numbers .
+- **Advanced Auto-differentiation Functions**: Extended `auto_diff` to be fully compatible with `numpy` arrays, enabling automatic differentiation over arrays of dual numbers.
+- **Multi-Function Differentiation**: Introduced the `multi_auto_diff` function, allowing users to evaluate multiple functions and their derivatives at once, and even over a range (array) of points.
+- **Advanced Error Handling and Testing**: Improved error handling mechanisms and added comprehensive test coverage to ensure robustness and reliability.
+
 ## Motivation
 
 **Dual numbers** provide a mathematically robust way to compute derivatives automatically and exactly during function evaluation. It typically has lower computational overhead than numerical approaches and eliminates the associated approximation errors. 
@@ -21,6 +30,8 @@ $$f(x) = (x + \epsilon)^2 = x^2 + 2x\epsilon$$
 
 ## Features
 
+All features now fully compatible with **numpy arrays of Dual numbers**
+
 - **Dual Numbers**: A class to store dual numbers
 - **Arithmetic Operations** for dual numbers
   - Addition, subtraction: `+`, `-`
@@ -36,6 +47,8 @@ $$f(x) = (x + \epsilon)^2 = x^2 + 2x\epsilon$$
   - Powers and roots: `pow`, `sqrt`.
 - **Automatic Differentiation**: Compute derivatives automatically using the properties of dual numbers.
   - `auto_diff(func, value)`
+- **Multi-Function Differentiation**: Evaluate multiple functions and their derivatives at once.
+  - `multi_auto_diff(funcs, value)`
 - **dual_autodiff**: A comprehensive Jupyter Notebook showcasing the features and usage of the package.
 
 ## Installation
@@ -46,19 +59,23 @@ $$f(x) = (x + \epsilon)^2 = x^2 + 2x\epsilon$$
     cd dual_autodiff_package
     ```
 
-2. Install the package in editable mode:
+2. Install the package:
+
+    2.1. Install the full package:
     ```bash
     pip install .
     ```
 
-3. For testing, install optional dependencies:
+    2.2. Or install binary wheels:
+
+    - For `cp310-manylinux_x86_64` (Python 3.10 on Linux):
     ```bash
-    pip install `.[testing]`
+    pip install wheelhouse/dual_autodiff-1.1.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
     ```
 
-4. For tutorial, install optional dependencies:
+    - For `cp311-manylinux_x86_64` (Python 3.11 on Linux):
     ```bash
-    pip install `.[tutorial]`
+    pip install wheelhouse/dual_autodiff-1.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
     ```
 
 ## Usage
@@ -89,8 +106,6 @@ y = Dual(3, 2)   # Dual number: 3 + 2ε
 ##### Arithmetic Operations
 ```python
 print(x + y)     # Dual(real=5, dual=3)
-print(x - y)     # Dual(real=-1, dual=-1)
-print(x * y)     # Dual(real=6, dual=7)
 print(x / y)     # Dual(real=0.666..., dual=-0.222...)
 ```
 
@@ -103,14 +118,21 @@ print(x < y)     # True
 
 ##### Mathematical Functions in Class
 ```python
-print(x.sin())   # Dual(real=0.9092..., dual=-0.4161...)
-print(x.log())   # Dual(real=0.6931..., dual=0.5)
+print(x.sin())   # Dual(real=0.909..., dual=-0.416...)
+print(x.log())   # Dual(real=0.693..., dual=0.5)
 ```
 
 ##### Mathematical Functions using 'Math' operators
 ```python
 print(pow(x, n)) # Dual(real=8.0, dual=12.0)
-print(atan(x))   # Dual(real=1.1071487177940904, dual=0.2)
+print(atan(x))   # Dual(real=1.107..., dual=0.2)
+```
+
+##### Mathematical Functions in 'numpy' array
+```python
+x = np.array([Dual(2, 1), Dual(4, 5)])
+print(sin(x))    #[Dual(real=0.909..., dual=-0.416...),Dual(real=-0.757..., dual=-3.268...)]
+print(exp(x))    ##[Dual(real=7.389..., dual=7.389...), Dual(real=54.598..., dual=272.991...)]
 ```
 
 ##### Automatic Differentiation - auto_diff
@@ -118,6 +140,40 @@ print(atan(x))   # Dual(real=1.1071487177940904, dual=0.2)
 func = x**2 + 3*x
 print(auto_diff(func, 5)) # 13.0
 ```
+
+##### Automatic Differentiation with numpy arrays - auto_diff
+```python
+func = lambda x: x**2 + 3*x
+x = np.array([1, 2, 3])
+value, derivative = auto_diff(func, x)
+print(value)        # [ 4. 10. 18.]
+print(derivative)   # [ 5.  7.  9.]
+```
+
+##### Multi-Function Differentiation - multi_auto_diff
+```python
+funcs = [
+    lambda x: x**2 + x,
+    lambda x: x.sin(),
+    lambda x: x.log()
+]
+x = np.array([1, 2, 3])
+results = multi_auto_diff(funcs, x)
+for value, derivative in results:
+    print("Value:", value)
+    print("Derivative:", derivative)
+
+# Expected output:
+# Value: [ 2.  6. 12.]
+# Derivative: [3. 5. 7.]
+# Value: [0.841..., 0.909..., 0.141...]
+# Derivative: [0.540..., -0.416..., -0.990...]
+# Value: [0.   , 0.693..., 1.099...]
+# Derivative: [1.   , 0.5   , 0.333...]
+```
+
+
+
 
 ### More comprehensive Examples
 

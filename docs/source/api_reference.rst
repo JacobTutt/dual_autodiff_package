@@ -16,7 +16,6 @@ dual_autodiff.math_functions
 
 .. automodule:: dual_autodiff.autodiff_tools
    :members:
-   :special-members: sin,cos,tan,arcsin,arccos
    :undoc-members:
    :private-members:
    :show-inheritance:
