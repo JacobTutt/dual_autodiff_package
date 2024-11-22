@@ -11,3 +11,4 @@ myst-parser>=0.18.0
 readthedocs-sphinx-ext>=2.2.5        
 ipython>=8.18.1
 Pygments>=2.15.0
+numpy
