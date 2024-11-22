@@ -28,7 +28,7 @@ classifiers = [
 dependencies = ["numpy>=1.21"]
 
 [project.optional-dependencies]
-tutorial = ["numpy", "nbsphinx", "jupyter"]
+tutorial = ["numpy", "nbsphinx", "jupyter", "matplotlib"]
 cython = ["cython"]
 testing = ["pytest"]
 docs = ["sphinx","setuptools_scm"]
