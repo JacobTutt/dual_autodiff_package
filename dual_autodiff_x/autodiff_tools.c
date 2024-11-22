@@ -1852,11 +1852,222 @@ static CYTHON_INLINE PyObject* __Pyx_PyObject_CallOneArg(PyObject *func, PyObjec
 /* RaiseException.proto */
 static void __Pyx_Raise(PyObject *type, PyObject *value, PyObject *tb, PyObject *cause);
 
+/* ListCompAppend.proto */
+#if CYTHON_USE_PYLIST_INTERNALS && CYTHON_ASSUME_SAFE_MACROS
+static CYTHON_INLINE int __Pyx_ListComp_Append(PyObject* list, PyObject* x) {
+    PyListObject* L = (PyListObject*) list;
+    Py_ssize_t len = Py_SIZE(list);
+    if (likely(L->allocated > len)) {
+        Py_INCREF(x);
+        #if CYTHON_COMPILING_IN_CPYTHON && PY_VERSION_HEX >= 0x030d0000
+        L->ob_item[len] = x;
+        #else
+        PyList_SET_ITEM(list, len, x);
+        #endif
+        __Pyx_SET_SIZE(list, len + 1);
+        return 0;
+    }
+    return PyList_Append(list, x);
+}
+#else
+#define __Pyx_ListComp_Append(L,x) PyList_Append(L,x)
+#endif
+
+/* pybytes_as_double.proto */
+static double __Pyx_SlowPyString_AsDouble(PyObject *obj);
+static double __Pyx__PyBytes_AsDouble(PyObject *obj, const char* start, Py_ssize_t length);
+static CYTHON_INLINE double __Pyx_PyBytes_AsDouble(PyObject *obj) {
+    char* as_c_string;
+    Py_ssize_t size;
+#if CYTHON_ASSUME_SAFE_MACROS
+    as_c_string = PyBytes_AS_STRING(obj);
+    size = PyBytes_GET_SIZE(obj);
+#else
+    if (PyBytes_AsStringAndSize(obj, &as_c_string, &size) < 0) {
+        return (double)-1;
+    }
+#endif
+    return __Pyx__PyBytes_AsDouble(obj, as_c_string, size);
+}
+static CYTHON_INLINE double __Pyx_PyByteArray_AsDouble(PyObject *obj) {
+    char* as_c_string;
+    Py_ssize_t size;
+#if CYTHON_ASSUME_SAFE_MACROS
+    as_c_string = PyByteArray_AS_STRING(obj);
+    size = PyByteArray_GET_SIZE(obj);
+#else
+    as_c_string = PyByteArray_AsString(obj);
+    if (as_c_string == NULL) {
+        return (double)-1;
+    }
+    size = PyByteArray_Size(obj);
+#endif
+    return __Pyx__PyBytes_AsDouble(obj, as_c_string, size);
+}
+
+/* pyunicode_as_double.proto */
+#if PY_MAJOR_VERSION >= 3 && !CYTHON_COMPILING_IN_PYPY && CYTHON_ASSUME_SAFE_MACROS
+static const char* __Pyx__PyUnicode_AsDouble_Copy(const void* data, const int kind, char* buffer, Py_ssize_t start, Py_ssize_t end) {
+    int last_was_punctuation;
+    Py_ssize_t i;
+    last_was_punctuation = 1;
+    for (i=start; i <= end; i++) {
+        Py_UCS4 chr = PyUnicode_READ(kind, data, i);
+        int is_punctuation = (chr == '_') | (chr == '.');
+        *buffer = (char)chr;
+        buffer += (chr != '_');
+        if (unlikely(chr > 127)) goto parse_failure;
+        if (unlikely(last_was_punctuation & is_punctuation)) goto parse_failure;
+        last_was_punctuation = is_punctuation;
+    }
+    if (unlikely(last_was_punctuation)) goto parse_failure;
+    *buffer = '\0';
+    return buffer;
+parse_failure:
+    return NULL;
+}
+static double __Pyx__PyUnicode_AsDouble_inf_nan(const void* data, int kind, Py_ssize_t start, Py_ssize_t length) {
+    int matches = 1;
+    Py_UCS4 chr;
+    Py_UCS4 sign = PyUnicode_READ(kind, data, start);
+    int is_signed = (sign == '-') | (sign == '+');
+    start += is_signed;
+    length -= is_signed;
+    switch (PyUnicode_READ(kind, data, start)) {
+        #ifdef Py_NAN
+        case 'n':
+        case 'N':
+            if (unlikely(length != 3)) goto parse_failure;
+            chr = PyUnicode_READ(kind, data, start+1);
+            matches &= (chr == 'a') | (chr == 'A');
+            chr = PyUnicode_READ(kind, data, start+2);
+            matches &= (chr == 'n') | (chr == 'N');
+            if (unlikely(!matches)) goto parse_failure;
+            return (sign == '-') ? -Py_NAN : Py_NAN;
+        #endif
+        case 'i':
+        case 'I':
+            if (unlikely(length < 3)) goto parse_failure;
+            chr = PyUnicode_READ(kind, data, start+1);
+            matches &= (chr == 'n') | (chr == 'N');
+            chr = PyUnicode_READ(kind, data, start+2);
+            matches &= (chr == 'f') | (chr == 'F');
+            if (likely(length == 3 && matches))
+                return (sign == '-') ? -Py_HUGE_VAL : Py_HUGE_VAL;
+            if (unlikely(length != 8)) goto parse_failure;
+            chr = PyUnicode_READ(kind, data, start+3);
+            matches &= (chr == 'i') | (chr == 'I');
+            chr = PyUnicode_READ(kind, data, start+4);
+            matches &= (chr == 'n') | (chr == 'N');
+            chr = PyUnicode_READ(kind, data, start+5);
+            matches &= (chr == 'i') | (chr == 'I');
+            chr = PyUnicode_READ(kind, data, start+6);
+            matches &= (chr == 't') | (chr == 'T');
+            chr = PyUnicode_READ(kind, data, start+7);
+            matches &= (chr == 'y') | (chr == 'Y');
+            if (unlikely(!matches)) goto parse_failure;
+            return (sign == '-') ? -Py_HUGE_VAL : Py_HUGE_VAL;
+        case '.': case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
+            break;
+        default:
+            goto parse_failure;
+    }
+    return 0.0;
+parse_failure:
+    return -1.0;
+}
+static double __Pyx_PyUnicode_AsDouble_WithSpaces(PyObject *obj) {
+    double value;
+    const char *last;
+    char *end;
+    Py_ssize_t start, length = PyUnicode_GET_LENGTH(obj);
+    const int kind = PyUnicode_KIND(obj);
+    const void* data = PyUnicode_DATA(obj);
+    start = 0;
+    while (Py_UNICODE_ISSPACE(PyUnicode_READ(kind, data, start)))
+        start++;
+    while (start < length - 1 && Py_UNICODE_ISSPACE(PyUnicode_READ(kind, data, length - 1)))
+        length--;
+    length -= start;
+    if (unlikely(length <= 0)) goto fallback;
+    value = __Pyx__PyUnicode_AsDouble_inf_nan(data, kind, start, length);
+    if (unlikely(value == -1.0)) goto fallback;
+    if (value != 0.0) return value;
+    if (length < 40) {
+        char number[40];
+        last = __Pyx__PyUnicode_AsDouble_Copy(data, kind, number, start, start + length);
+        if (unlikely(!last)) goto fallback;
+        value = PyOS_string_to_double(number, &end, NULL);
+    } else {
+        char *number = (char*) PyMem_Malloc((length + 1) * sizeof(char));
+        if (unlikely(!number)) goto fallback;
+        last = __Pyx__PyUnicode_AsDouble_Copy(data, kind, number, start, start + length);
+        if (unlikely(!last)) {
+            PyMem_Free(number);
+            goto fallback;
+        }
+        value = PyOS_string_to_double(number, &end, NULL);
+        PyMem_Free(number);
+    }
+    if (likely(end == last) || (value == (double)-1 && PyErr_Occurred())) {
+        return value;
+    }
+fallback:
+    return __Pyx_SlowPyString_AsDouble(obj);
+}
+#endif
+static CYTHON_INLINE double __Pyx_PyUnicode_AsDouble(PyObject *obj) {
+#if PY_MAJOR_VERSION >= 3 && !CYTHON_COMPILING_IN_PYPY && CYTHON_ASSUME_SAFE_MACROS
+    if (unlikely(__Pyx_PyUnicode_READY(obj) == -1))
+        return (double)-1;
+    if (likely(PyUnicode_IS_ASCII(obj))) {
+        const char *s;
+        Py_ssize_t length;
+        s = PyUnicode_AsUTF8AndSize(obj, &length);
+        return __Pyx__PyBytes_AsDouble(obj, s, length);
+    }
+    return __Pyx_PyUnicode_AsDouble_WithSpaces(obj);
+#else
+    return __Pyx_SlowPyString_AsDouble(obj);
+#endif
+}
+
+/* pynumber_float.proto */
+static CYTHON_INLINE PyObject* __Pyx__PyNumber_Float(PyObject* obj);
+#define __Pyx_PyNumber_Float(x) (PyFloat_CheckExact(x) ? __Pyx_NewRef(x) : __Pyx__PyNumber_Float(x))
+
+/* ListAppend.proto */
+#if CYTHON_USE_PYLIST_INTERNALS && CYTHON_ASSUME_SAFE_MACROS
+static CYTHON_INLINE int __Pyx_PyList_Append(PyObject* list, PyObject* x) {
+    PyListObject* L = (PyListObject*) list;
+    Py_ssize_t len = Py_SIZE(list);
+    if (likely(L->allocated > len) & likely(len > (L->allocated >> 1))) {
+        Py_INCREF(x);
+        #if CYTHON_COMPILING_IN_CPYTHON && PY_VERSION_HEX >= 0x030d0000
+        L->ob_item[len] = x;
+        #else
+        PyList_SET_ITEM(list, len, x);
+        #endif
+        __Pyx_SET_SIZE(list, len + 1);
+        return 0;
+    }
+    return PyList_Append(list, x);
+}
+#else
+#define __Pyx_PyList_Append(L,x) PyList_Append(L,x)
+#endif
+
 /* Import.proto */
 static PyObject *__Pyx_Import(PyObject *name, PyObject *from_list, int level);
 
 /* ImportFrom.proto */
 static PyObject* __Pyx_ImportFrom(PyObject* module, PyObject* name);
+
+/* ImportDottedModule.proto */
+static PyObject *__Pyx_ImportDottedModule(PyObject *name, PyObject *parts_tuple);
+#if PY_MAJOR_VERSION >= 3
+static PyObject *__Pyx_ImportDottedModule_WalkParts(PyObject *module, PyObject *name, PyObject *parts_tuple);
+#endif
 
 /* IncludeStructmemberH.proto */
 #include <structmember.h>
@@ -2101,7 +2312,10 @@ static PyObject *__pyx_builtin_TypeError;
 static const char __pyx_k_[] = ".";
 static const char __pyx_k_n[] = "n";
 static const char __pyx_k_x[] = "x";
-static const char __pyx_k__19[] = "?";
+static const char __pyx_k__3[] = "*";
+static const char __pyx_k_np[] = "np";
+static const char __pyx_k_xi[] = "xi";
+static const char __pyx_k__23[] = "?";
 static const char __pyx_k_cos[] = "cos";
 static const char __pyx_k_exp[] = "exp";
 static const char __pyx_k_log[] = "log";
@@ -2118,12 +2332,25 @@ static const char __pyx_k_func[] = "func";
 static const char __pyx_k_main[] = "__main__";
 static const char __pyx_k_math[] = "math";
 static const char __pyx_k_name[] = "__name__";
+static const char __pyx_k_real[] = "real";
 static const char __pyx_k_sinh[] = "sinh";
+static const char __pyx_k_spec[] = "__spec__";
 static const char __pyx_k_sqrt[] = "sqrt";
 static const char __pyx_k_tanh[] = "tanh";
 static const char __pyx_k_test[] = "__test__";
+static const char __pyx_k_array[] = "array";
+static const char __pyx_k_dtype[] = "dtype";
+static const char __pyx_k_funcs[] = "funcs";
+static const char __pyx_k_numpy[] = "numpy";
+static const char __pyx_k_power[] = "power";
 static const char __pyx_k_value[] = "value";
+static const char __pyx_k_arccos[] = "arccos";
+static const char __pyx_k_arcsin[] = "arcsin";
+static const char __pyx_k_arctan[] = "arctan";
 static const char __pyx_k_import[] = "__import__";
+static const char __pyx_k_number[] = "number";
+static const char __pyx_k_ndarray[] = "ndarray";
+static const char __pyx_k_results[] = "results";
 static const char __pyx_k_math_cos[] = "math_cos";
 static const char __pyx_k_math_exp[] = "math_exp";
 static const char __pyx_k_math_log[] = "math_log";
@@ -2139,48 +2366,57 @@ static const char __pyx_k_math_cosh[] = "math_cosh";
 static const char __pyx_k_math_sinh[] = "math_sinh";
 static const char __pyx_k_math_sqrt[] = "math_sqrt";
 static const char __pyx_k_math_tanh[] = "math_tanh";
-static const char __pyx_k_cos_line_45[] = "cos (line 45)";
-static const char __pyx_k_sin_line_23[] = "sin (line 23)";
-static const char __pyx_k_tan_line_67[] = "tan (line 67)";
-static const char __pyx_k_asin_line_93[] = "asin (line 93)";
-static const char __pyx_k_exp_line_235[] = "exp (line 235)";
+static const char __pyx_k_dual_parts[] = "dual_parts";
+static const char __pyx_k_issubdtype[] = "issubdtype";
+static const char __pyx_k_real_parts[] = "real_parts";
+static const char __pyx_k_cos_line_64[] = "cos (line 64)";
+static const char __pyx_k_sin_line_25[] = "sin (line 25)";
+static const char __pyx_k_exp_line_379[] = "exp (line 379)";
+static const char __pyx_k_initializing[] = "_initializing";
 static const char __pyx_k_is_coroutine[] = "_is_coroutine";
-static const char __pyx_k_log_line_257[] = "log (line 257)";
-static const char __pyx_k_pow_line_308[] = "pow (line 308)";
-static const char __pyx_k_acos_line_118[] = "acos (line 118)";
-static const char __pyx_k_atan_line_143[] = "atan (line 143)";
-static const char __pyx_k_cosh_line_189[] = "cosh (line 189)";
-static const char __pyx_k_sinh_line_165[] = "sinh (line 165)";
-static const char __pyx_k_sqrt_line_283[] = "sqrt (line 283)";
-static const char __pyx_k_tanh_line_211[] = "tanh (line 211)";
+static const char __pyx_k_log_line_417[] = "log (line 417)";
+static const char __pyx_k_pow_line_501[] = "pow (line 501)";
+static const char __pyx_k_tan_line_103[] = "tan (line 103)";
+static const char __pyx_k_cosh_line_303[] = "cosh (line 303)";
+static const char __pyx_k_sinh_line_264[] = "sinh (line 264)";
+static const char __pyx_k_sqrt_line_459[] = "sqrt (line 459)";
+static const char __pyx_k_tanh_line_341[] = "tanh (line 341)";
+static const char __pyx_k_arccos_line_187[] = "arccos (line 187)";
+static const char __pyx_k_arcsin_line_145[] = "arcsin (line 145)";
+static const char __pyx_k_arctan_line_225[] = "arctan (line 225)";
+static const char __pyx_k_multi_auto_diff[] = "multi_auto_diff";
 static const char __pyx_k_asyncio_coroutines[] = "asyncio.coroutines";
-static const char __pyx_k_auto_diff_line_335[] = "auto_diff (line 335)";
+static const char __pyx_k_auto_diff_line_544[] = "auto_diff (line 544)";
 static const char __pyx_k_cline_in_traceback[] = "cline_in_traceback";
-static const char __pyx_k_Compute_the_cosine_of_a_number[] = "\n    Compute the cosine of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The cosine of the input.\n\n    Examples:\n        >>> from dual_autodiff import cos, Dual\n        >>> cos(0)\n        1.0\n        >>> cos(Dual(0, 1))\n        Dual(real=1.0, dual=0.0)\n    ";
-static const char __pyx_k_Compute_the_hyperbolic_sine_of[] = "\n    Compute the hyperbolic sine of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The hyperbolic sine of the input.\n\n    Examples:\n        >>> from dual_autodiff import sinh, Dual\n        >>> sinh(1)\n        1.1752011936438014\n        >>> sinh(Dual(1, 1))\n        Dual(real=1.1752011936438014, dual=1.5430806348152437)\n    ";
-static const char __pyx_k_Compute_the_hyperbolic_tangent[] = "\n    Compute the hyperbolic tangent of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The hyperbolic tangent of the input.\n\n    Examples:\n        >>> from dual_autodiff import tanh, Dual\n        >>> tanh(1)\n        0.7615941559557649\n        >>> tanh(Dual(1, 1))\n        Dual(real=0.7615941559557649, dual=0.41997434161402614)\n    ";
+static const char __pyx_k_multi_auto_diff_line_604[] = "multi_auto_diff (line 604)";
+static const char __pyx_k_Compute_a_number_a_Dual_number[] = "\n    Compute a number, a Dual number, or a numpy array of Dual numbers raised to a power.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The base.\n        n (float): The exponent.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The result of raising `x` to the power `n`.\n\n    Raises:\n        TypeError: If n is not an int or float.\n\n    Examples:\n        >>> from dual_autodiff import pow, Dual\n    1. With a scalar input:\n        >>> pow(2, 3)\n        8\n    2. With a Dual number input:\n        >>> pow(Dual(2, 1), 3)\n        Dual(real=8, dual=12.0)\n    3. With a Dual numpy array input:\n        >>> pow(np.array([Dual(2,1), Dual(3,2)]), 3)\n        array([Dual(real=8, dual=12.0),\n        Dual(real=27, dual=54.0)],\n        dtype=object)\n    ";
+static const char __pyx_k_Compute_the_hyperbolic_sine_of[] = "\n    Compute the hyperbolic sine of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The hyperbolic sine of the input.\n\n    Examples:\n        >>> from dual_autodiff import sinh, Dual\n    1. With a scalar input:\n        >>> sinh(1)\n        1.1752011936438014\n    2. With a Dual number input:\n        >>> sinh(Dual(1, 1))\n        Dual(real=1.1752011936438014, dual=1.5430806348152437)\n    3. With a Dual numpy array input:\n        >>> sinh(np.array([Dual(1,1), Dual(0.5,2)]))\n        array([Dual(real=1.1752..., dual=1.5430...),\n        Dual(real=0.5210..., dual=2.1276...)],\n        dtype=object)\n    ";
+static const char __pyx_k_Compute_the_hyperbolic_tangent[] = "\n    Compute the hyperbolic tangent of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The hyperbolic tangent of the input.\n\n    Examples:\n        >>> from dual_autodiff import tanh, Dual\n    1. With a scalar input:\n        >>> tanh(1)\n        0.7615941559557649\n    2. With a Dual number input:\n        >>> tanh(Dual(1, 1))\n        Dual(real=0.7615941559557649, dual=0.41997434161402614)\n    3. With a Dual numpy array input:\n        >>> tanh(np.array([Dual(1,1), Dual(0.5,2)]))\n        array([Dual(real=0.7615..., dual=0.4199...),\n        Dual(real=0.4621..., dual=1.7864...)],\n        dtype=object)\n    ";
 static const char __pyx_k_dual_autodiff_x_autodiff_tools[] = "dual_autodiff_x.autodiff_tools";
-static const char __pyx_k_Compute_a_number_or_a_Dual_numb[] = "\n    Compute a number or a Dual number raised to a power.\n\n    Parameters:\n        x (float or Dual): The base.\n        n (float): The exponent.\n\n    Returns:\n        float or Dual: The result of raising `x` to the power `n`.\n\n    Raises:\n        TypeError: If n is not an int or float.\n\n    Examples:\n        >>> from dual_autodiff import pow, Dual\n        >>> pow(2, 3)\n        8\n        >>> pow(Dual(2, 1), 3)\n        Dual(real=8, dual=12.0)\n    ";
-static const char __pyx_k_Compute_the_arccosine_of_a_numb[] = "\n    Compute the arccosine of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The arccosine of the input.\n\n    Raises:\n        ValueError: If the real part is outside the range [-1, 1].\n\n    Examples:\n        >>> from dual_autodiff import acos, Dual\n        >>> acos(1)\n        0.0\n        >>> acos(Dual(1, 0))\n        Dual(real=0.0, dual=0.0)\n    ";
-static const char __pyx_k_Compute_the_arcsine_of_a_number[] = "\n    Compute the arcsine of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The arcsine of the input.\n    \n    Raises:\n        ValueError: If the real part is outside the range [-1, 1].\n\n    Examples:\n        >>> from dual_autodiff import asin, Dual\n        >>> asin(0)\n        0.0\n        >>> asin(Dual(0, 1))\n        Dual(real=0.0, dual=1.0)\n    ";
-static const char __pyx_k_Compute_the_arctangent_of_a_num[] = "\n    Compute the arctangent of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The arctangent of the input.\n\n    Examples:\n        >>> from dual_autodiff import atan, Dual\n        >>> atan(1)\n        0.7853981633974483\n        >>> atan(Dual(1, 1))\n        Dual(real=0.7853981633974483, dual=0.5)\n    ";
-static const char __pyx_k_Compute_the_exponential_of_a_nu[] = "\n    Compute the exponential of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The exponential of the input.\n\n    Examples:\n        >>> from dual_autodiff import exp, Dual\n        >>> exp(1)\n        2.718281828459045\n        >>> exp(Dual(1, 1))\n        Dual(real=2.718281828459045, dual=2.718281828459045)\n    ";
-static const char __pyx_k_Compute_the_hyperbolic_cosine_o[] = "\n    Compute the hyperbolic cosine of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The hyperbolic cosine of the input.\n\n    Examples:\n        >>> from dual_autodiff import cosh, Dual\n        >>> cosh(1)\n        1.5430806348152437\n        >>> cosh(Dual(1, 1))\n        Dual(real=1.5430806348152437, dual=1.1752011936438014)\n    ";
-static const char __pyx_k_Compute_the_natural_logarithm_o[] = "\n    Compute the natural logarithm of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The natural logarithm of the input.\n\n    Raises:\n        ValueError: If the real part of dual number is non-positive\n\n    Examples:\n        >>> from dual_autodiff import log, Dual\n        >>> log(2)\n        0.6931471805599453\n        >>> log(Dual(2, 1))\n        Dual(real=0.6931471805599453, dual=0.5)\n    ";
-static const char __pyx_k_Compute_the_sine_of_a_number_or[] = "\n    Compute the sine of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The sine of the input.\n\n    Examples:\n        >>> from dual_autodiff import sin, Dual\n        >>> sin(0)\n        0.0\n        >>> sin(Dual(0, 1))\n        Dual(real=0.0, dual=1.0)\n    ";
-static const char __pyx_k_Compute_the_square_root_of_a_nu[] = "\n    Compute the square root of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The square root of the input.\n\n    Raises:\n        ValueError: If the real part of dual number is negative.\n\n    Examples:\n        >>> from dual_autodiff import sqrt, Dual\n        >>> sqrt(4)\n        2.0\n        >>> sqrt(Dual(4, 1))\n        Dual(real=2.0, dual=0.25)\n    ";
-static const char __pyx_k_Compute_the_tangent_of_a_number[] = "\n    Compute the tangent of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The tangent of the input.\n\n    Raises:\n        ValueError: The tangent function is undefined as cosine of real part equals 0\n\n    Examples:\n        >>> from dual_autodiff import tan, Dual\n        >>> tan(0)\n        0.0\n        >>> tan(Dual(0, 1))\n        Dual(real=0.0, dual=1.0)\n    ";
-static const char __pyx_k_Evaluates_the_derivative_of_a_f[] = "\n    Evaluates the derivative of a function f at x using Dual number: x + \316\265.\n\n    Parameters:\n        func (callable): The function to differentiate.\n        x (float): The point where the derivative is evaluated.\n\n    Returns:\n        float: The derivative of `f` at `x`.\n\n    Raises:\n        TypeError: If f is not callable\n        TypeError: If input x a float, or int.\n\n    Examples:\n        >>> from dual_autodiff import auto_diff\n        >>> auto_diff(lambda x: x**2 + x, 2)\n        5.0\n    ";
-static const char __pyx_k_x_must_be_a_scalar_number_float[] = "x must be a scalar number (float/int), got ";
+static const char __pyx_k_Compute_the_arccosine_of_a_numb[] = "\n    Compute the arccosine of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Raises:\n        ValueError: If the real part is outside the range [-1, 1].\n\n    Examples:\n        >>> from dual_autodiff import arccos, Dual\n    1. With a scalar input:\n        >>> arccos(1)\n        0.0\n    2. With a Dual number input:\n        >>> arccos(Dual(1, 1))\n        Dual(real=0.0, dual=-1.0)\n    3. With a Dual numpy array input:\n        >>> arccos(np.array([Dual(0.5,1), Dual(0.3,2)]))\n        array([Dual(real=1.0471..., dual=-1.1547...),\n        Dual(real=1.2661..., dual=-2.0910...)],\n        dtype=object)\n    ";
+static const char __pyx_k_Compute_the_arcsine_of_a_number[] = "\n    Compute the arcsine of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The arcsine of the input.\n    \n    Raises:\n        ValueError: If a real part is outside the range [-1, 1].\n\n    Examples:\n        >>> from dual_autodiff import arcsin, Dual\n    1. With a scalar input:\n        >>> arcsin(0)\n        0.0\n    2. With a Dual number input:\n        >>> arcsin(Dual(0, 1))\n        Dual(real=0.0, dual=1.0)\n    3. With a Dual numpy array input:\n        >>> arcsin(np.array([Dual(0.5,1), Dual(0.3,2)]))\n        array([Dual(real=0.5235..., dual=1.1547...),\n        Dual(real=0.3046..., dual=2.0910...)],\n        dtype=object)\n    ";
+static const char __pyx_k_Compute_the_arctangent_of_a_num[] = "\n    Compute the arctangent of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The arctangent of the input.\n\n    Examples:\n        >>> from dual_autodiff import arctan, Dual\n    1. With a scalar input:\n        >>> arctan(1)\n        0.7853981633974483\n    2. With a Dual number input:\n        >>> arctan(Dual(1, 1))\n        Dual(real=0.7853981633974483, dual=0.5)\n    3. With a Dual numpy array input:\n        >>> arctan(np.array([Dual(1,1), Dual(0.5,2)]))\n        array([Dual(real=0.7853..., dual=0.5),\n        Dual(real=0.4636..., dual=1.6)],\n        dtype=object)\n    ";
+static const char __pyx_k_Compute_the_cos_of_a_number_a_D[] = "\n    Compute the cos of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The cosine of the input.\n\n    Examples:\n        >>> from dual_autodiff import cos, Dual\n    1. With a scalar input:\n        >>> cos(0)\n        1.0\n    2. With a Dual number input:\n        >>> cos(Dual(0, 1))\n        Dual(real=1.0, dual=0.0)\n    3. With a Dual numpy array input:\n        >>> cos(np.array([Dual(2,3), Dual(3,4)]))\n        array([Dual(real=-0.4161..., dual=-2.7278...),\n        Dual(real=-0.9899..., dual=-0.1411...)],\n        dtype=object)\n    ";
+static const char __pyx_k_Compute_the_exponential_of_a_nu[] = "\n    Compute the exponential of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The exponential of the input.\n\n    Examples:\n        >>> from dual_autodiff import exp, Dual\n    1. With a scalar input:\n        >>> exp(1)\n        2.718281828459045\n    2. With a Dual number input:\n        >>> exp(Dual(1, 1))\n        Dual(real=2.718281828459045, dual=2.718281828459045)\n    3. With a Dual numpy array input:\n        >>> exp(np.array([Dual(1,1), Dual(0.5,2)]))\n        array([Dual(real=2.7182..., dual=2.7182...),\n        Dual(real=1.6487..., dual=3.2974...)],\n        dtype=object)\n    ";
+static const char __pyx_k_Compute_the_hyperbolic_cosine_o[] = "\n    Compute the hyperbolic cosine of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The hyperbolic cosine of the input.\n\n    Examples:\n        >>> from dual_autodiff import cosh, Dual\n    1. With a scalar input:\n        >>> cosh(1)\n        1.5430806348152437\n    2. With a Dual number input:\n        >>> cosh(Dual(1, 1))\n        Dual(real=1.5430806348152437, dual=1.1752011936438014)\n    3. With a Dual numpy array input:\n        >>> cosh(np.array([Dual(1,1), Dual(0.5,2)]))\n        array([Dual(real=1.5430..., dual=1.1752...),\n        Dual(real=1.1276..., dual=2.5210...)],\n        dtype=object)\n    ";
+static const char __pyx_k_Compute_the_natural_logarithm_o[] = "\n    Compute the natural logarithm of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The natural logarithm of the input.\n\n    Raises:\n        ValueError: If a real part of dual number is non-positive\n\n    Examples:\n        >>> from dual_autodiff import log, Dual\n    1. With a scalar input:\n        >>> log(1)\n        0.0\n    2. With a Dual number input:\n        >>> log(Dual(1, 1))\n        Dual(real=0.0, dual=1.0)\n    3. With a Dual numpy array input:\n        >>> log(np.array([Dual(1,1), Dual(2,2)]))\n        array([Dual(real=0.0, dual=1.0),\n        Dual(real=0.6931..., dual=1.0)],\n        dtype=object)\n    ";
+static const char __pyx_k_Compute_the_sin_of_a_number_a_D[] = "\n    Compute the sin of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The sine of the input.\n\n\n    Examples:\n        >>> from dual_autodiff import sin, Dual\n    1. With a scalar input:\n        >>> sin(0)\n        0.0\n    2. With a Dual number input:\n        >>> sin(Dual(0, 1))\n        Dual(real=0.0, dual=1.0)\n    3. With a Dual numpy array input:\n        >>> sin(np.array([Dual(2,3), Dual(3,4)]))\n        array([Dual(real=0.9093..., dual=-1.2484...),\n        Dual(real=0.1411..., dual=-3.9600...)],\n        dtype=object)\n    ";
+static const char __pyx_k_Compute_the_square_root_of_a_nu[] = "\n    Compute the square root of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The square root of the input.\n\n    Raises:\n        ValueError: If the real part of dual number is negative.\n\n    Examples:\n        >>> from dual_autodiff import sqrt, Dual\n    1. With a scalar input:\n        >>> sqrt(4)\n        2.0\n    2. With a Dual number input:\n        >>> sqrt(Dual(4, 1))\n        Dual(real=2.0, dual=0.25)\n    3. With a Dual numpy array input:\n        >>> sqrt(np.array([Dual(4,1), Dual(9,2)]))\n        array([Dual(real=2.0, dual=0.25),\n        Dual(real=3.0, dual=0.3333...)],\n        dtype=object)\n    ";
+static const char __pyx_k_Compute_the_tangent_of_a_number[] = "\n    Compute the tangent of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The tangent of the input.\n\n    Raises:\n        ValueError: The tangent function is undefined as cosine of real part equals 0.\n\n    Examples:\n        >>> from dual_autodiff import tan, Dual\n    1. With a scalar input:\n        >>> tan(0)\n        0.0\n    2. With a Dual number input:\n        >>> tan(Dual(0, 1))\n        Dual(real=0.0, dual=1.0)\n    3. With a Dual numpy array input:\n        >>> tan(np.array([Dual(2,3), Dual(3,4)]))\n        array([Dual(real=-2.1850..., dual=5.7744...),\n        Dual(real=-0.1425..., dual=16.2574...)],\n        dtype=object)\n    ";
+static const char __pyx_k_Evaluates_the_derivative_of_a_f[] = "\n    Evaluates the derivative of a function f at x using Dual number: x + \316\265.\n\n    Parameters:\n        func (callable): The function to differentiate.\n        x (float, int, or numpy.ndarray): The point(s) where the derivative is evaluated.\n\n    Returns:\n        tuple: A tuple containing the real and dual parts of the result.\n               If x is a scalar, returns (real, dual).\n               If x is a numpy array, returns two numpy arrays (real_array, dual_array).\n\n    Raises:\n        TypeError: If func is not callable.\n        TypeError: If input x is not a float, int, or numpy.ndarray containing scalar values.\n\n    Examples:\n        >>> from dual_autodiff import auto_diff\n    1. With a scalar input:\n        >>> auto_diff(lambda x: x**3 + 2*x**2 + x, 2)\n        (14.0, 17.0)\n    2. With a numpy array input:\n        >>> auto_diff(lambda x: x**3 + 2*x**2 + x, np.array([1, 2, 3]))\n        (array([ 4.0, 14.0, 34.0]), array([ 4.0, 17.0, 40.0]))\n    ";
+static const char __pyx_k_Evaluates_the_derivatives_of_mu[] = "\n    Evaluates the derivatives of multiple functions at x using Dual number: x + \316\265.\n\n    Parameters:\n        funcs (list of callables): The functions to differentiate.\n        x (float, int, or numpy.ndarray): The point(s) where the derivatives are evaluated.\n\n    Returns:\n        list of tuples: A list of tuples, each containing the real and dual parts of the result for each function.\n                        If x is a scalar, each tuple is (real, dual).\n                        If x is a numpy array, each tuple contains two numpy arrays (real_array, dual_array).\n\n    Raises:\n        TypeError: If any func in funcs is not callable.\n        TypeError: If input x is not a float, int, or numpy.ndarray containing scalar values.\n\n    Examples:\n        >>> from dual_autodiff import multi_auto_diff\n    1. With a scalar input:\n        >>> multi_auto_diff([lambda x: x**3, lambda x: x**2], 2)\n        [(8.0, 12.0), (4.0, 4.0)]\n    2. With a numpy array input:\n        >>> multi_auto_diff([lambda x: x**3, lambda x: x**2], np.array([1, 2, 3]))\n        [(array([ 1.0,  8.0, 27.0]), array([ 3.0, 12.0, 27.0])), (array([1.0, 4.0, 9.0]), array([2.0, 4.0, 6.0]))]\n    ";
+static const char __pyx_k_x_must_be_a_scalar_number_float[] = "x must be a scalar number (float/int) or numpy.ndarray, got ";
+static const char __pyx_k_Each_func_must_be_a_callable_fun[] = "Each func must be a callable function, got ";
 static const char __pyx_k_dual_autodiff_x_autodiff_tools_p[] = "dual_autodiff_x/autodiff_tools.pyx";
-static const char __pyx_k_function_must_be_a_callable_func[] = "function must be a callable function, got ";
+static const char __pyx_k_func_must_be_a_callable_function[] = "func must be a callable function, got ";
+static const char __pyx_k_numpy_ndarray_must_contain_scala[] = "numpy.ndarray must contain scalar values (float/int).";
 /* #### Code section: decls ### */
 static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_sin(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x); /* proto */
 static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_2cos(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x); /* proto */
 static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_4tan(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x); /* proto */
-static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_6asin(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x); /* proto */
-static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_8acos(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x); /* proto */
-static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_10atan(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x); /* proto */
+static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_6arcsin(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x); /* proto */
+static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_8arccos(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x); /* proto */
+static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_10arctan(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x); /* proto */
 static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_12sinh(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x); /* proto */
 static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_14cosh(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x); /* proto */
 static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_16tanh(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x); /* proto */
@@ -2189,6 +2425,7 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_20log(CYTHON_UNUSED
 static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_22sqrt(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x); /* proto */
 static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_24pow(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x, PyObject *__pyx_v_n); /* proto */
 static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_26auto_diff(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_func, PyObject *__pyx_v_x); /* proto */
+static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_28multi_auto_diff(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_funcs, PyObject *__pyx_v_x); /* proto */
 /* #### Code section: late_includes ### */
 /* #### Code section: module_state ### */
 typedef struct {
@@ -2219,48 +2456,60 @@ typedef struct {
   #if CYTHON_USE_MODULE_STATE
   #endif
   PyObject *__pyx_kp_u_;
-  PyObject *__pyx_kp_u_Compute_a_number_or_a_Dual_numb;
+  PyObject *__pyx_kp_u_Compute_a_number_a_Dual_number;
   PyObject *__pyx_kp_u_Compute_the_arccosine_of_a_numb;
   PyObject *__pyx_kp_u_Compute_the_arcsine_of_a_number;
   PyObject *__pyx_kp_u_Compute_the_arctangent_of_a_num;
-  PyObject *__pyx_kp_u_Compute_the_cosine_of_a_number;
+  PyObject *__pyx_kp_u_Compute_the_cos_of_a_number_a_D;
   PyObject *__pyx_kp_u_Compute_the_exponential_of_a_nu;
   PyObject *__pyx_kp_u_Compute_the_hyperbolic_cosine_o;
   PyObject *__pyx_kp_u_Compute_the_hyperbolic_sine_of;
   PyObject *__pyx_kp_u_Compute_the_hyperbolic_tangent;
   PyObject *__pyx_kp_u_Compute_the_natural_logarithm_o;
-  PyObject *__pyx_kp_u_Compute_the_sine_of_a_number_or;
+  PyObject *__pyx_kp_u_Compute_the_sin_of_a_number_a_D;
   PyObject *__pyx_kp_u_Compute_the_square_root_of_a_nu;
   PyObject *__pyx_kp_u_Compute_the_tangent_of_a_number;
   PyObject *__pyx_n_s_Dual;
+  PyObject *__pyx_kp_u_Each_func_must_be_a_callable_fun;
   PyObject *__pyx_kp_u_Evaluates_the_derivative_of_a_f;
+  PyObject *__pyx_kp_u_Evaluates_the_derivatives_of_mu;
   PyObject *__pyx_n_s_TypeError;
-  PyObject *__pyx_n_s__19;
+  PyObject *__pyx_n_s__23;
+  PyObject *__pyx_n_s__3;
   PyObject *__pyx_n_s_acos;
-  PyObject *__pyx_kp_u_acos_line_118;
+  PyObject *__pyx_n_s_arccos;
+  PyObject *__pyx_kp_u_arccos_line_187;
+  PyObject *__pyx_n_s_arcsin;
+  PyObject *__pyx_kp_u_arcsin_line_145;
+  PyObject *__pyx_n_s_arctan;
+  PyObject *__pyx_kp_u_arctan_line_225;
+  PyObject *__pyx_n_s_array;
   PyObject *__pyx_n_s_asin;
-  PyObject *__pyx_kp_u_asin_line_93;
   PyObject *__pyx_n_s_asyncio_coroutines;
   PyObject *__pyx_n_s_atan;
-  PyObject *__pyx_kp_u_atan_line_143;
   PyObject *__pyx_n_s_auto_diff;
-  PyObject *__pyx_kp_u_auto_diff_line_335;
+  PyObject *__pyx_kp_u_auto_diff_line_544;
   PyObject *__pyx_n_s_cline_in_traceback;
   PyObject *__pyx_n_s_cos;
-  PyObject *__pyx_kp_u_cos_line_45;
+  PyObject *__pyx_kp_u_cos_line_64;
   PyObject *__pyx_n_s_cosh;
-  PyObject *__pyx_kp_u_cosh_line_189;
+  PyObject *__pyx_kp_u_cosh_line_303;
+  PyObject *__pyx_n_s_dtype;
   PyObject *__pyx_n_s_dual;
   PyObject *__pyx_n_s_dual_autodiff_x_autodiff_tools;
   PyObject *__pyx_kp_s_dual_autodiff_x_autodiff_tools_p;
+  PyObject *__pyx_n_s_dual_parts;
   PyObject *__pyx_n_s_exp;
-  PyObject *__pyx_kp_u_exp_line_235;
+  PyObject *__pyx_kp_u_exp_line_379;
   PyObject *__pyx_n_s_func;
-  PyObject *__pyx_kp_u_function_must_be_a_callable_func;
+  PyObject *__pyx_kp_u_func_must_be_a_callable_function;
+  PyObject *__pyx_n_s_funcs;
   PyObject *__pyx_n_s_import;
+  PyObject *__pyx_n_s_initializing;
   PyObject *__pyx_n_s_is_coroutine;
+  PyObject *__pyx_n_s_issubdtype;
   PyObject *__pyx_n_s_log;
-  PyObject *__pyx_kp_u_log_line_257;
+  PyObject *__pyx_kp_u_log_line_417;
   PyObject *__pyx_n_s_main;
   PyObject *__pyx_n_s_math;
   PyObject *__pyx_n_s_math_acos;
@@ -2276,31 +2525,44 @@ typedef struct {
   PyObject *__pyx_n_s_math_sqrt;
   PyObject *__pyx_n_s_math_tan;
   PyObject *__pyx_n_s_math_tanh;
+  PyObject *__pyx_n_s_multi_auto_diff;
+  PyObject *__pyx_kp_u_multi_auto_diff_line_604;
   PyObject *__pyx_n_s_n;
   PyObject *__pyx_n_s_name;
+  PyObject *__pyx_n_s_ndarray;
+  PyObject *__pyx_n_s_np;
+  PyObject *__pyx_n_s_number;
+  PyObject *__pyx_n_s_numpy;
+  PyObject *__pyx_kp_u_numpy_ndarray_must_contain_scala;
   PyObject *__pyx_n_s_pow;
-  PyObject *__pyx_kp_u_pow_line_308;
+  PyObject *__pyx_kp_u_pow_line_501;
+  PyObject *__pyx_n_s_power;
+  PyObject *__pyx_n_s_real;
+  PyObject *__pyx_n_s_real_parts;
+  PyObject *__pyx_n_s_results;
   PyObject *__pyx_n_s_sin;
-  PyObject *__pyx_kp_u_sin_line_23;
+  PyObject *__pyx_kp_u_sin_line_25;
   PyObject *__pyx_n_s_sinh;
-  PyObject *__pyx_kp_u_sinh_line_165;
+  PyObject *__pyx_kp_u_sinh_line_264;
+  PyObject *__pyx_n_s_spec;
   PyObject *__pyx_n_s_sqrt;
-  PyObject *__pyx_kp_u_sqrt_line_283;
+  PyObject *__pyx_kp_u_sqrt_line_459;
   PyObject *__pyx_n_s_tan;
-  PyObject *__pyx_kp_u_tan_line_67;
+  PyObject *__pyx_kp_u_tan_line_103;
   PyObject *__pyx_n_s_tanh;
-  PyObject *__pyx_kp_u_tanh_line_211;
+  PyObject *__pyx_kp_u_tanh_line_341;
   PyObject *__pyx_n_s_test;
   PyObject *__pyx_n_s_value;
   PyObject *__pyx_n_s_x;
   PyObject *__pyx_kp_u_x_must_be_a_scalar_number_float;
+  PyObject *__pyx_n_s_xi;
   PyObject *__pyx_int_0;
   PyObject *__pyx_int_1;
   PyObject *__pyx_tuple__2;
-  PyObject *__pyx_tuple__15;
+  PyObject *__pyx_tuple__4;
   PyObject *__pyx_tuple__17;
-  PyObject *__pyx_codeobj__3;
-  PyObject *__pyx_codeobj__4;
+  PyObject *__pyx_tuple__19;
+  PyObject *__pyx_tuple__21;
   PyObject *__pyx_codeobj__5;
   PyObject *__pyx_codeobj__6;
   PyObject *__pyx_codeobj__7;
@@ -2311,8 +2573,11 @@ typedef struct {
   PyObject *__pyx_codeobj__12;
   PyObject *__pyx_codeobj__13;
   PyObject *__pyx_codeobj__14;
+  PyObject *__pyx_codeobj__15;
   PyObject *__pyx_codeobj__16;
   PyObject *__pyx_codeobj__18;
+  PyObject *__pyx_codeobj__20;
+  PyObject *__pyx_codeobj__22;
 } __pyx_mstate;
 
 #if CYTHON_USE_MODULE_STATE
@@ -2356,48 +2621,60 @@ static int __pyx_m_clear(PyObject *m) {
   Py_CLEAR(clear_module_state->__pyx_FusedFunctionType);
   #endif
   Py_CLEAR(clear_module_state->__pyx_kp_u_);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_Compute_a_number_or_a_Dual_numb);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_Compute_a_number_a_Dual_number);
   Py_CLEAR(clear_module_state->__pyx_kp_u_Compute_the_arccosine_of_a_numb);
   Py_CLEAR(clear_module_state->__pyx_kp_u_Compute_the_arcsine_of_a_number);
   Py_CLEAR(clear_module_state->__pyx_kp_u_Compute_the_arctangent_of_a_num);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_Compute_the_cosine_of_a_number);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_Compute_the_cos_of_a_number_a_D);
   Py_CLEAR(clear_module_state->__pyx_kp_u_Compute_the_exponential_of_a_nu);
   Py_CLEAR(clear_module_state->__pyx_kp_u_Compute_the_hyperbolic_cosine_o);
   Py_CLEAR(clear_module_state->__pyx_kp_u_Compute_the_hyperbolic_sine_of);
   Py_CLEAR(clear_module_state->__pyx_kp_u_Compute_the_hyperbolic_tangent);
   Py_CLEAR(clear_module_state->__pyx_kp_u_Compute_the_natural_logarithm_o);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_Compute_the_sine_of_a_number_or);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_Compute_the_sin_of_a_number_a_D);
   Py_CLEAR(clear_module_state->__pyx_kp_u_Compute_the_square_root_of_a_nu);
   Py_CLEAR(clear_module_state->__pyx_kp_u_Compute_the_tangent_of_a_number);
   Py_CLEAR(clear_module_state->__pyx_n_s_Dual);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_Each_func_must_be_a_callable_fun);
   Py_CLEAR(clear_module_state->__pyx_kp_u_Evaluates_the_derivative_of_a_f);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_Evaluates_the_derivatives_of_mu);
   Py_CLEAR(clear_module_state->__pyx_n_s_TypeError);
-  Py_CLEAR(clear_module_state->__pyx_n_s__19);
+  Py_CLEAR(clear_module_state->__pyx_n_s__23);
+  Py_CLEAR(clear_module_state->__pyx_n_s__3);
   Py_CLEAR(clear_module_state->__pyx_n_s_acos);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_acos_line_118);
+  Py_CLEAR(clear_module_state->__pyx_n_s_arccos);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_arccos_line_187);
+  Py_CLEAR(clear_module_state->__pyx_n_s_arcsin);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_arcsin_line_145);
+  Py_CLEAR(clear_module_state->__pyx_n_s_arctan);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_arctan_line_225);
+  Py_CLEAR(clear_module_state->__pyx_n_s_array);
   Py_CLEAR(clear_module_state->__pyx_n_s_asin);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_asin_line_93);
   Py_CLEAR(clear_module_state->__pyx_n_s_asyncio_coroutines);
   Py_CLEAR(clear_module_state->__pyx_n_s_atan);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_atan_line_143);
   Py_CLEAR(clear_module_state->__pyx_n_s_auto_diff);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_auto_diff_line_335);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_auto_diff_line_544);
   Py_CLEAR(clear_module_state->__pyx_n_s_cline_in_traceback);
   Py_CLEAR(clear_module_state->__pyx_n_s_cos);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_cos_line_45);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_cos_line_64);
   Py_CLEAR(clear_module_state->__pyx_n_s_cosh);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_cosh_line_189);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_cosh_line_303);
+  Py_CLEAR(clear_module_state->__pyx_n_s_dtype);
   Py_CLEAR(clear_module_state->__pyx_n_s_dual);
   Py_CLEAR(clear_module_state->__pyx_n_s_dual_autodiff_x_autodiff_tools);
   Py_CLEAR(clear_module_state->__pyx_kp_s_dual_autodiff_x_autodiff_tools_p);
+  Py_CLEAR(clear_module_state->__pyx_n_s_dual_parts);
   Py_CLEAR(clear_module_state->__pyx_n_s_exp);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_exp_line_235);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_exp_line_379);
   Py_CLEAR(clear_module_state->__pyx_n_s_func);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_function_must_be_a_callable_func);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_func_must_be_a_callable_function);
+  Py_CLEAR(clear_module_state->__pyx_n_s_funcs);
   Py_CLEAR(clear_module_state->__pyx_n_s_import);
+  Py_CLEAR(clear_module_state->__pyx_n_s_initializing);
   Py_CLEAR(clear_module_state->__pyx_n_s_is_coroutine);
+  Py_CLEAR(clear_module_state->__pyx_n_s_issubdtype);
   Py_CLEAR(clear_module_state->__pyx_n_s_log);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_log_line_257);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_log_line_417);
   Py_CLEAR(clear_module_state->__pyx_n_s_main);
   Py_CLEAR(clear_module_state->__pyx_n_s_math);
   Py_CLEAR(clear_module_state->__pyx_n_s_math_acos);
@@ -2413,31 +2690,44 @@ static int __pyx_m_clear(PyObject *m) {
   Py_CLEAR(clear_module_state->__pyx_n_s_math_sqrt);
   Py_CLEAR(clear_module_state->__pyx_n_s_math_tan);
   Py_CLEAR(clear_module_state->__pyx_n_s_math_tanh);
+  Py_CLEAR(clear_module_state->__pyx_n_s_multi_auto_diff);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_multi_auto_diff_line_604);
   Py_CLEAR(clear_module_state->__pyx_n_s_n);
   Py_CLEAR(clear_module_state->__pyx_n_s_name);
+  Py_CLEAR(clear_module_state->__pyx_n_s_ndarray);
+  Py_CLEAR(clear_module_state->__pyx_n_s_np);
+  Py_CLEAR(clear_module_state->__pyx_n_s_number);
+  Py_CLEAR(clear_module_state->__pyx_n_s_numpy);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_numpy_ndarray_must_contain_scala);
   Py_CLEAR(clear_module_state->__pyx_n_s_pow);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_pow_line_308);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_pow_line_501);
+  Py_CLEAR(clear_module_state->__pyx_n_s_power);
+  Py_CLEAR(clear_module_state->__pyx_n_s_real);
+  Py_CLEAR(clear_module_state->__pyx_n_s_real_parts);
+  Py_CLEAR(clear_module_state->__pyx_n_s_results);
   Py_CLEAR(clear_module_state->__pyx_n_s_sin);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_sin_line_23);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_sin_line_25);
   Py_CLEAR(clear_module_state->__pyx_n_s_sinh);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_sinh_line_165);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_sinh_line_264);
+  Py_CLEAR(clear_module_state->__pyx_n_s_spec);
   Py_CLEAR(clear_module_state->__pyx_n_s_sqrt);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_sqrt_line_283);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_sqrt_line_459);
   Py_CLEAR(clear_module_state->__pyx_n_s_tan);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_tan_line_67);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_tan_line_103);
   Py_CLEAR(clear_module_state->__pyx_n_s_tanh);
-  Py_CLEAR(clear_module_state->__pyx_kp_u_tanh_line_211);
+  Py_CLEAR(clear_module_state->__pyx_kp_u_tanh_line_341);
   Py_CLEAR(clear_module_state->__pyx_n_s_test);
   Py_CLEAR(clear_module_state->__pyx_n_s_value);
   Py_CLEAR(clear_module_state->__pyx_n_s_x);
   Py_CLEAR(clear_module_state->__pyx_kp_u_x_must_be_a_scalar_number_float);
+  Py_CLEAR(clear_module_state->__pyx_n_s_xi);
   Py_CLEAR(clear_module_state->__pyx_int_0);
   Py_CLEAR(clear_module_state->__pyx_int_1);
   Py_CLEAR(clear_module_state->__pyx_tuple__2);
-  Py_CLEAR(clear_module_state->__pyx_tuple__15);
+  Py_CLEAR(clear_module_state->__pyx_tuple__4);
   Py_CLEAR(clear_module_state->__pyx_tuple__17);
-  Py_CLEAR(clear_module_state->__pyx_codeobj__3);
-  Py_CLEAR(clear_module_state->__pyx_codeobj__4);
+  Py_CLEAR(clear_module_state->__pyx_tuple__19);
+  Py_CLEAR(clear_module_state->__pyx_tuple__21);
   Py_CLEAR(clear_module_state->__pyx_codeobj__5);
   Py_CLEAR(clear_module_state->__pyx_codeobj__6);
   Py_CLEAR(clear_module_state->__pyx_codeobj__7);
@@ -2448,8 +2738,11 @@ static int __pyx_m_clear(PyObject *m) {
   Py_CLEAR(clear_module_state->__pyx_codeobj__12);
   Py_CLEAR(clear_module_state->__pyx_codeobj__13);
   Py_CLEAR(clear_module_state->__pyx_codeobj__14);
+  Py_CLEAR(clear_module_state->__pyx_codeobj__15);
   Py_CLEAR(clear_module_state->__pyx_codeobj__16);
   Py_CLEAR(clear_module_state->__pyx_codeobj__18);
+  Py_CLEAR(clear_module_state->__pyx_codeobj__20);
+  Py_CLEAR(clear_module_state->__pyx_codeobj__22);
   return 0;
 }
 #endif
@@ -2471,48 +2764,60 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
   Py_VISIT(traverse_module_state->__pyx_FusedFunctionType);
   #endif
   Py_VISIT(traverse_module_state->__pyx_kp_u_);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_Compute_a_number_or_a_Dual_numb);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_Compute_a_number_a_Dual_number);
   Py_VISIT(traverse_module_state->__pyx_kp_u_Compute_the_arccosine_of_a_numb);
   Py_VISIT(traverse_module_state->__pyx_kp_u_Compute_the_arcsine_of_a_number);
   Py_VISIT(traverse_module_state->__pyx_kp_u_Compute_the_arctangent_of_a_num);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_Compute_the_cosine_of_a_number);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_Compute_the_cos_of_a_number_a_D);
   Py_VISIT(traverse_module_state->__pyx_kp_u_Compute_the_exponential_of_a_nu);
   Py_VISIT(traverse_module_state->__pyx_kp_u_Compute_the_hyperbolic_cosine_o);
   Py_VISIT(traverse_module_state->__pyx_kp_u_Compute_the_hyperbolic_sine_of);
   Py_VISIT(traverse_module_state->__pyx_kp_u_Compute_the_hyperbolic_tangent);
   Py_VISIT(traverse_module_state->__pyx_kp_u_Compute_the_natural_logarithm_o);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_Compute_the_sine_of_a_number_or);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_Compute_the_sin_of_a_number_a_D);
   Py_VISIT(traverse_module_state->__pyx_kp_u_Compute_the_square_root_of_a_nu);
   Py_VISIT(traverse_module_state->__pyx_kp_u_Compute_the_tangent_of_a_number);
   Py_VISIT(traverse_module_state->__pyx_n_s_Dual);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_Each_func_must_be_a_callable_fun);
   Py_VISIT(traverse_module_state->__pyx_kp_u_Evaluates_the_derivative_of_a_f);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_Evaluates_the_derivatives_of_mu);
   Py_VISIT(traverse_module_state->__pyx_n_s_TypeError);
-  Py_VISIT(traverse_module_state->__pyx_n_s__19);
+  Py_VISIT(traverse_module_state->__pyx_n_s__23);
+  Py_VISIT(traverse_module_state->__pyx_n_s__3);
   Py_VISIT(traverse_module_state->__pyx_n_s_acos);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_acos_line_118);
+  Py_VISIT(traverse_module_state->__pyx_n_s_arccos);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_arccos_line_187);
+  Py_VISIT(traverse_module_state->__pyx_n_s_arcsin);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_arcsin_line_145);
+  Py_VISIT(traverse_module_state->__pyx_n_s_arctan);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_arctan_line_225);
+  Py_VISIT(traverse_module_state->__pyx_n_s_array);
   Py_VISIT(traverse_module_state->__pyx_n_s_asin);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_asin_line_93);
   Py_VISIT(traverse_module_state->__pyx_n_s_asyncio_coroutines);
   Py_VISIT(traverse_module_state->__pyx_n_s_atan);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_atan_line_143);
   Py_VISIT(traverse_module_state->__pyx_n_s_auto_diff);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_auto_diff_line_335);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_auto_diff_line_544);
   Py_VISIT(traverse_module_state->__pyx_n_s_cline_in_traceback);
   Py_VISIT(traverse_module_state->__pyx_n_s_cos);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_cos_line_45);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_cos_line_64);
   Py_VISIT(traverse_module_state->__pyx_n_s_cosh);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_cosh_line_189);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_cosh_line_303);
+  Py_VISIT(traverse_module_state->__pyx_n_s_dtype);
   Py_VISIT(traverse_module_state->__pyx_n_s_dual);
   Py_VISIT(traverse_module_state->__pyx_n_s_dual_autodiff_x_autodiff_tools);
   Py_VISIT(traverse_module_state->__pyx_kp_s_dual_autodiff_x_autodiff_tools_p);
+  Py_VISIT(traverse_module_state->__pyx_n_s_dual_parts);
   Py_VISIT(traverse_module_state->__pyx_n_s_exp);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_exp_line_235);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_exp_line_379);
   Py_VISIT(traverse_module_state->__pyx_n_s_func);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_function_must_be_a_callable_func);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_func_must_be_a_callable_function);
+  Py_VISIT(traverse_module_state->__pyx_n_s_funcs);
   Py_VISIT(traverse_module_state->__pyx_n_s_import);
+  Py_VISIT(traverse_module_state->__pyx_n_s_initializing);
   Py_VISIT(traverse_module_state->__pyx_n_s_is_coroutine);
+  Py_VISIT(traverse_module_state->__pyx_n_s_issubdtype);
   Py_VISIT(traverse_module_state->__pyx_n_s_log);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_log_line_257);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_log_line_417);
   Py_VISIT(traverse_module_state->__pyx_n_s_main);
   Py_VISIT(traverse_module_state->__pyx_n_s_math);
   Py_VISIT(traverse_module_state->__pyx_n_s_math_acos);
@@ -2528,31 +2833,44 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
   Py_VISIT(traverse_module_state->__pyx_n_s_math_sqrt);
   Py_VISIT(traverse_module_state->__pyx_n_s_math_tan);
   Py_VISIT(traverse_module_state->__pyx_n_s_math_tanh);
+  Py_VISIT(traverse_module_state->__pyx_n_s_multi_auto_diff);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_multi_auto_diff_line_604);
   Py_VISIT(traverse_module_state->__pyx_n_s_n);
   Py_VISIT(traverse_module_state->__pyx_n_s_name);
+  Py_VISIT(traverse_module_state->__pyx_n_s_ndarray);
+  Py_VISIT(traverse_module_state->__pyx_n_s_np);
+  Py_VISIT(traverse_module_state->__pyx_n_s_number);
+  Py_VISIT(traverse_module_state->__pyx_n_s_numpy);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_numpy_ndarray_must_contain_scala);
   Py_VISIT(traverse_module_state->__pyx_n_s_pow);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_pow_line_308);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_pow_line_501);
+  Py_VISIT(traverse_module_state->__pyx_n_s_power);
+  Py_VISIT(traverse_module_state->__pyx_n_s_real);
+  Py_VISIT(traverse_module_state->__pyx_n_s_real_parts);
+  Py_VISIT(traverse_module_state->__pyx_n_s_results);
   Py_VISIT(traverse_module_state->__pyx_n_s_sin);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_sin_line_23);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_sin_line_25);
   Py_VISIT(traverse_module_state->__pyx_n_s_sinh);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_sinh_line_165);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_sinh_line_264);
+  Py_VISIT(traverse_module_state->__pyx_n_s_spec);
   Py_VISIT(traverse_module_state->__pyx_n_s_sqrt);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_sqrt_line_283);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_sqrt_line_459);
   Py_VISIT(traverse_module_state->__pyx_n_s_tan);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_tan_line_67);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_tan_line_103);
   Py_VISIT(traverse_module_state->__pyx_n_s_tanh);
-  Py_VISIT(traverse_module_state->__pyx_kp_u_tanh_line_211);
+  Py_VISIT(traverse_module_state->__pyx_kp_u_tanh_line_341);
   Py_VISIT(traverse_module_state->__pyx_n_s_test);
   Py_VISIT(traverse_module_state->__pyx_n_s_value);
   Py_VISIT(traverse_module_state->__pyx_n_s_x);
   Py_VISIT(traverse_module_state->__pyx_kp_u_x_must_be_a_scalar_number_float);
+  Py_VISIT(traverse_module_state->__pyx_n_s_xi);
   Py_VISIT(traverse_module_state->__pyx_int_0);
   Py_VISIT(traverse_module_state->__pyx_int_1);
   Py_VISIT(traverse_module_state->__pyx_tuple__2);
-  Py_VISIT(traverse_module_state->__pyx_tuple__15);
+  Py_VISIT(traverse_module_state->__pyx_tuple__4);
   Py_VISIT(traverse_module_state->__pyx_tuple__17);
-  Py_VISIT(traverse_module_state->__pyx_codeobj__3);
-  Py_VISIT(traverse_module_state->__pyx_codeobj__4);
+  Py_VISIT(traverse_module_state->__pyx_tuple__19);
+  Py_VISIT(traverse_module_state->__pyx_tuple__21);
   Py_VISIT(traverse_module_state->__pyx_codeobj__5);
   Py_VISIT(traverse_module_state->__pyx_codeobj__6);
   Py_VISIT(traverse_module_state->__pyx_codeobj__7);
@@ -2563,8 +2881,11 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
   Py_VISIT(traverse_module_state->__pyx_codeobj__12);
   Py_VISIT(traverse_module_state->__pyx_codeobj__13);
   Py_VISIT(traverse_module_state->__pyx_codeobj__14);
+  Py_VISIT(traverse_module_state->__pyx_codeobj__15);
   Py_VISIT(traverse_module_state->__pyx_codeobj__16);
   Py_VISIT(traverse_module_state->__pyx_codeobj__18);
+  Py_VISIT(traverse_module_state->__pyx_codeobj__20);
+  Py_VISIT(traverse_module_state->__pyx_codeobj__22);
   return 0;
 }
 #endif
@@ -2596,48 +2917,60 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
 #if CYTHON_USE_MODULE_STATE
 #endif
 #define __pyx_kp_u_ __pyx_mstate_global->__pyx_kp_u_
-#define __pyx_kp_u_Compute_a_number_or_a_Dual_numb __pyx_mstate_global->__pyx_kp_u_Compute_a_number_or_a_Dual_numb
+#define __pyx_kp_u_Compute_a_number_a_Dual_number __pyx_mstate_global->__pyx_kp_u_Compute_a_number_a_Dual_number
 #define __pyx_kp_u_Compute_the_arccosine_of_a_numb __pyx_mstate_global->__pyx_kp_u_Compute_the_arccosine_of_a_numb
 #define __pyx_kp_u_Compute_the_arcsine_of_a_number __pyx_mstate_global->__pyx_kp_u_Compute_the_arcsine_of_a_number
 #define __pyx_kp_u_Compute_the_arctangent_of_a_num __pyx_mstate_global->__pyx_kp_u_Compute_the_arctangent_of_a_num
-#define __pyx_kp_u_Compute_the_cosine_of_a_number __pyx_mstate_global->__pyx_kp_u_Compute_the_cosine_of_a_number
+#define __pyx_kp_u_Compute_the_cos_of_a_number_a_D __pyx_mstate_global->__pyx_kp_u_Compute_the_cos_of_a_number_a_D
 #define __pyx_kp_u_Compute_the_exponential_of_a_nu __pyx_mstate_global->__pyx_kp_u_Compute_the_exponential_of_a_nu
 #define __pyx_kp_u_Compute_the_hyperbolic_cosine_o __pyx_mstate_global->__pyx_kp_u_Compute_the_hyperbolic_cosine_o
 #define __pyx_kp_u_Compute_the_hyperbolic_sine_of __pyx_mstate_global->__pyx_kp_u_Compute_the_hyperbolic_sine_of
 #define __pyx_kp_u_Compute_the_hyperbolic_tangent __pyx_mstate_global->__pyx_kp_u_Compute_the_hyperbolic_tangent
 #define __pyx_kp_u_Compute_the_natural_logarithm_o __pyx_mstate_global->__pyx_kp_u_Compute_the_natural_logarithm_o
-#define __pyx_kp_u_Compute_the_sine_of_a_number_or __pyx_mstate_global->__pyx_kp_u_Compute_the_sine_of_a_number_or
+#define __pyx_kp_u_Compute_the_sin_of_a_number_a_D __pyx_mstate_global->__pyx_kp_u_Compute_the_sin_of_a_number_a_D
 #define __pyx_kp_u_Compute_the_square_root_of_a_nu __pyx_mstate_global->__pyx_kp_u_Compute_the_square_root_of_a_nu
 #define __pyx_kp_u_Compute_the_tangent_of_a_number __pyx_mstate_global->__pyx_kp_u_Compute_the_tangent_of_a_number
 #define __pyx_n_s_Dual __pyx_mstate_global->__pyx_n_s_Dual
+#define __pyx_kp_u_Each_func_must_be_a_callable_fun __pyx_mstate_global->__pyx_kp_u_Each_func_must_be_a_callable_fun
 #define __pyx_kp_u_Evaluates_the_derivative_of_a_f __pyx_mstate_global->__pyx_kp_u_Evaluates_the_derivative_of_a_f
+#define __pyx_kp_u_Evaluates_the_derivatives_of_mu __pyx_mstate_global->__pyx_kp_u_Evaluates_the_derivatives_of_mu
 #define __pyx_n_s_TypeError __pyx_mstate_global->__pyx_n_s_TypeError
-#define __pyx_n_s__19 __pyx_mstate_global->__pyx_n_s__19
+#define __pyx_n_s__23 __pyx_mstate_global->__pyx_n_s__23
+#define __pyx_n_s__3 __pyx_mstate_global->__pyx_n_s__3
 #define __pyx_n_s_acos __pyx_mstate_global->__pyx_n_s_acos
-#define __pyx_kp_u_acos_line_118 __pyx_mstate_global->__pyx_kp_u_acos_line_118
+#define __pyx_n_s_arccos __pyx_mstate_global->__pyx_n_s_arccos
+#define __pyx_kp_u_arccos_line_187 __pyx_mstate_global->__pyx_kp_u_arccos_line_187
+#define __pyx_n_s_arcsin __pyx_mstate_global->__pyx_n_s_arcsin
+#define __pyx_kp_u_arcsin_line_145 __pyx_mstate_global->__pyx_kp_u_arcsin_line_145
+#define __pyx_n_s_arctan __pyx_mstate_global->__pyx_n_s_arctan
+#define __pyx_kp_u_arctan_line_225 __pyx_mstate_global->__pyx_kp_u_arctan_line_225
+#define __pyx_n_s_array __pyx_mstate_global->__pyx_n_s_array
 #define __pyx_n_s_asin __pyx_mstate_global->__pyx_n_s_asin
-#define __pyx_kp_u_asin_line_93 __pyx_mstate_global->__pyx_kp_u_asin_line_93
 #define __pyx_n_s_asyncio_coroutines __pyx_mstate_global->__pyx_n_s_asyncio_coroutines
 #define __pyx_n_s_atan __pyx_mstate_global->__pyx_n_s_atan
-#define __pyx_kp_u_atan_line_143 __pyx_mstate_global->__pyx_kp_u_atan_line_143
 #define __pyx_n_s_auto_diff __pyx_mstate_global->__pyx_n_s_auto_diff
-#define __pyx_kp_u_auto_diff_line_335 __pyx_mstate_global->__pyx_kp_u_auto_diff_line_335
+#define __pyx_kp_u_auto_diff_line_544 __pyx_mstate_global->__pyx_kp_u_auto_diff_line_544
 #define __pyx_n_s_cline_in_traceback __pyx_mstate_global->__pyx_n_s_cline_in_traceback
 #define __pyx_n_s_cos __pyx_mstate_global->__pyx_n_s_cos
-#define __pyx_kp_u_cos_line_45 __pyx_mstate_global->__pyx_kp_u_cos_line_45
+#define __pyx_kp_u_cos_line_64 __pyx_mstate_global->__pyx_kp_u_cos_line_64
 #define __pyx_n_s_cosh __pyx_mstate_global->__pyx_n_s_cosh
-#define __pyx_kp_u_cosh_line_189 __pyx_mstate_global->__pyx_kp_u_cosh_line_189
+#define __pyx_kp_u_cosh_line_303 __pyx_mstate_global->__pyx_kp_u_cosh_line_303
+#define __pyx_n_s_dtype __pyx_mstate_global->__pyx_n_s_dtype
 #define __pyx_n_s_dual __pyx_mstate_global->__pyx_n_s_dual
 #define __pyx_n_s_dual_autodiff_x_autodiff_tools __pyx_mstate_global->__pyx_n_s_dual_autodiff_x_autodiff_tools
 #define __pyx_kp_s_dual_autodiff_x_autodiff_tools_p __pyx_mstate_global->__pyx_kp_s_dual_autodiff_x_autodiff_tools_p
+#define __pyx_n_s_dual_parts __pyx_mstate_global->__pyx_n_s_dual_parts
 #define __pyx_n_s_exp __pyx_mstate_global->__pyx_n_s_exp
-#define __pyx_kp_u_exp_line_235 __pyx_mstate_global->__pyx_kp_u_exp_line_235
+#define __pyx_kp_u_exp_line_379 __pyx_mstate_global->__pyx_kp_u_exp_line_379
 #define __pyx_n_s_func __pyx_mstate_global->__pyx_n_s_func
-#define __pyx_kp_u_function_must_be_a_callable_func __pyx_mstate_global->__pyx_kp_u_function_must_be_a_callable_func
+#define __pyx_kp_u_func_must_be_a_callable_function __pyx_mstate_global->__pyx_kp_u_func_must_be_a_callable_function
+#define __pyx_n_s_funcs __pyx_mstate_global->__pyx_n_s_funcs
 #define __pyx_n_s_import __pyx_mstate_global->__pyx_n_s_import
+#define __pyx_n_s_initializing __pyx_mstate_global->__pyx_n_s_initializing
 #define __pyx_n_s_is_coroutine __pyx_mstate_global->__pyx_n_s_is_coroutine
+#define __pyx_n_s_issubdtype __pyx_mstate_global->__pyx_n_s_issubdtype
 #define __pyx_n_s_log __pyx_mstate_global->__pyx_n_s_log
-#define __pyx_kp_u_log_line_257 __pyx_mstate_global->__pyx_kp_u_log_line_257
+#define __pyx_kp_u_log_line_417 __pyx_mstate_global->__pyx_kp_u_log_line_417
 #define __pyx_n_s_main __pyx_mstate_global->__pyx_n_s_main
 #define __pyx_n_s_math __pyx_mstate_global->__pyx_n_s_math
 #define __pyx_n_s_math_acos __pyx_mstate_global->__pyx_n_s_math_acos
@@ -2653,31 +2986,44 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
 #define __pyx_n_s_math_sqrt __pyx_mstate_global->__pyx_n_s_math_sqrt
 #define __pyx_n_s_math_tan __pyx_mstate_global->__pyx_n_s_math_tan
 #define __pyx_n_s_math_tanh __pyx_mstate_global->__pyx_n_s_math_tanh
+#define __pyx_n_s_multi_auto_diff __pyx_mstate_global->__pyx_n_s_multi_auto_diff
+#define __pyx_kp_u_multi_auto_diff_line_604 __pyx_mstate_global->__pyx_kp_u_multi_auto_diff_line_604
 #define __pyx_n_s_n __pyx_mstate_global->__pyx_n_s_n
 #define __pyx_n_s_name __pyx_mstate_global->__pyx_n_s_name
+#define __pyx_n_s_ndarray __pyx_mstate_global->__pyx_n_s_ndarray
+#define __pyx_n_s_np __pyx_mstate_global->__pyx_n_s_np
+#define __pyx_n_s_number __pyx_mstate_global->__pyx_n_s_number
+#define __pyx_n_s_numpy __pyx_mstate_global->__pyx_n_s_numpy
+#define __pyx_kp_u_numpy_ndarray_must_contain_scala __pyx_mstate_global->__pyx_kp_u_numpy_ndarray_must_contain_scala
 #define __pyx_n_s_pow __pyx_mstate_global->__pyx_n_s_pow
-#define __pyx_kp_u_pow_line_308 __pyx_mstate_global->__pyx_kp_u_pow_line_308
+#define __pyx_kp_u_pow_line_501 __pyx_mstate_global->__pyx_kp_u_pow_line_501
+#define __pyx_n_s_power __pyx_mstate_global->__pyx_n_s_power
+#define __pyx_n_s_real __pyx_mstate_global->__pyx_n_s_real
+#define __pyx_n_s_real_parts __pyx_mstate_global->__pyx_n_s_real_parts
+#define __pyx_n_s_results __pyx_mstate_global->__pyx_n_s_results
 #define __pyx_n_s_sin __pyx_mstate_global->__pyx_n_s_sin
-#define __pyx_kp_u_sin_line_23 __pyx_mstate_global->__pyx_kp_u_sin_line_23
+#define __pyx_kp_u_sin_line_25 __pyx_mstate_global->__pyx_kp_u_sin_line_25
 #define __pyx_n_s_sinh __pyx_mstate_global->__pyx_n_s_sinh
-#define __pyx_kp_u_sinh_line_165 __pyx_mstate_global->__pyx_kp_u_sinh_line_165
+#define __pyx_kp_u_sinh_line_264 __pyx_mstate_global->__pyx_kp_u_sinh_line_264
+#define __pyx_n_s_spec __pyx_mstate_global->__pyx_n_s_spec
 #define __pyx_n_s_sqrt __pyx_mstate_global->__pyx_n_s_sqrt
-#define __pyx_kp_u_sqrt_line_283 __pyx_mstate_global->__pyx_kp_u_sqrt_line_283
+#define __pyx_kp_u_sqrt_line_459 __pyx_mstate_global->__pyx_kp_u_sqrt_line_459
 #define __pyx_n_s_tan __pyx_mstate_global->__pyx_n_s_tan
-#define __pyx_kp_u_tan_line_67 __pyx_mstate_global->__pyx_kp_u_tan_line_67
+#define __pyx_kp_u_tan_line_103 __pyx_mstate_global->__pyx_kp_u_tan_line_103
 #define __pyx_n_s_tanh __pyx_mstate_global->__pyx_n_s_tanh
-#define __pyx_kp_u_tanh_line_211 __pyx_mstate_global->__pyx_kp_u_tanh_line_211
+#define __pyx_kp_u_tanh_line_341 __pyx_mstate_global->__pyx_kp_u_tanh_line_341
 #define __pyx_n_s_test __pyx_mstate_global->__pyx_n_s_test
 #define __pyx_n_s_value __pyx_mstate_global->__pyx_n_s_value
 #define __pyx_n_s_x __pyx_mstate_global->__pyx_n_s_x
 #define __pyx_kp_u_x_must_be_a_scalar_number_float __pyx_mstate_global->__pyx_kp_u_x_must_be_a_scalar_number_float
+#define __pyx_n_s_xi __pyx_mstate_global->__pyx_n_s_xi
 #define __pyx_int_0 __pyx_mstate_global->__pyx_int_0
 #define __pyx_int_1 __pyx_mstate_global->__pyx_int_1
 #define __pyx_tuple__2 __pyx_mstate_global->__pyx_tuple__2
-#define __pyx_tuple__15 __pyx_mstate_global->__pyx_tuple__15
+#define __pyx_tuple__4 __pyx_mstate_global->__pyx_tuple__4
 #define __pyx_tuple__17 __pyx_mstate_global->__pyx_tuple__17
-#define __pyx_codeobj__3 __pyx_mstate_global->__pyx_codeobj__3
-#define __pyx_codeobj__4 __pyx_mstate_global->__pyx_codeobj__4
+#define __pyx_tuple__19 __pyx_mstate_global->__pyx_tuple__19
+#define __pyx_tuple__21 __pyx_mstate_global->__pyx_tuple__21
 #define __pyx_codeobj__5 __pyx_mstate_global->__pyx_codeobj__5
 #define __pyx_codeobj__6 __pyx_mstate_global->__pyx_codeobj__6
 #define __pyx_codeobj__7 __pyx_mstate_global->__pyx_codeobj__7
@@ -2688,16 +3034,19 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
 #define __pyx_codeobj__12 __pyx_mstate_global->__pyx_codeobj__12
 #define __pyx_codeobj__13 __pyx_mstate_global->__pyx_codeobj__13
 #define __pyx_codeobj__14 __pyx_mstate_global->__pyx_codeobj__14
+#define __pyx_codeobj__15 __pyx_mstate_global->__pyx_codeobj__15
 #define __pyx_codeobj__16 __pyx_mstate_global->__pyx_codeobj__16
 #define __pyx_codeobj__18 __pyx_mstate_global->__pyx_codeobj__18
+#define __pyx_codeobj__20 __pyx_mstate_global->__pyx_codeobj__20
+#define __pyx_codeobj__22 __pyx_mstate_global->__pyx_codeobj__22
 /* #### Code section: module_code ### */
 
-/* "dual_autodiff_x/autodiff_tools.pyx":23
+/* "dual_autodiff_x/autodiff_tools.pyx":25
  * 
  * # Call Dual's sin() method
  * def sin(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the sine of a number or a Dual number.
+ *     Compute the sin of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
 /* Python wrapper */
@@ -2708,7 +3057,7 @@ PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_sin, "\n    Compute the sine of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The sine of the input.\n\n    Examples:\n        >>> from dual_autodiff import sin, Dual\n        >>> sin(0)\n        0.0\n        >>> sin(Dual(0, 1))\n        Dual(real=0.0, dual=1.0)\n    ");
+PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_sin, "\n    Compute the sin of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The sine of the input.\n\n\n    Examples:\n        >>> from dual_autodiff import sin, Dual\n    1. With a scalar input:\n        >>> sin(0)\n        0.0\n    2. With a Dual number input:\n        >>> sin(Dual(0, 1))\n        Dual(real=0.0, dual=1.0)\n    3. With a Dual numpy array input:\n        >>> sin(np.array([Dual(2,3), Dual(3,4)]))\n        array([Dual(real=0.9093..., dual=-1.2484...),\n        Dual(real=0.1411..., dual=-3.9600...)],\n        dtype=object)\n    ");
 static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_1sin = {"sin", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_1sin, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_sin};
 static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_1sin(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
@@ -2754,12 +3103,12 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[0]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 23, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 25, __pyx_L3_error)
         else goto __pyx_L5_argtuple_error;
       }
       if (unlikely(kw_args > 0)) {
         const Py_ssize_t kwd_pos_args = __pyx_nargs;
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "sin") < 0)) __PYX_ERR(0, 23, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "sin") < 0)) __PYX_ERR(0, 25, __pyx_L3_error)
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
@@ -2770,7 +3119,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("sin", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 23, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("sin", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 25, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -2810,28 +3159,28 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_sin(CYTHON_UNUSED P
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("sin", 1);
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":40
- *         Dual(real=0.0, dual=1.0)
- *     """
+  /* "dual_autodiff_x/autodiff_tools.pyx":52
+ * 
+ *     # If input is a Dual number, call the sin() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.sin()
- *     return math_sin(x)
+ * 
  */
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 40, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 52, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 40, __pyx_L1_error)
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 52, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_2) {
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":41
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":53
+ *     # If input is a Dual number, call the sin() method from Dual class
  *     if isinstance(x, Dual):
  *         return x.sin()             # <<<<<<<<<<<<<<
- *     return math_sin(x)
  * 
+ *     # If input is a numpy array, call the np.sin method which will call the Dual class's sin method
  */
     __Pyx_XDECREF(__pyx_r);
-    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_sin); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 41, __pyx_L1_error)
+    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_sin); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 53, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __pyx_t_4 = NULL;
     __pyx_t_5 = 0;
@@ -2851,7 +3200,7 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_sin(CYTHON_UNUSED P
       PyObject *__pyx_callargs[2] = {__pyx_t_4, NULL};
       __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 41, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 53, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     }
@@ -2859,57 +3208,121 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_sin(CYTHON_UNUSED P
     __pyx_t_1 = 0;
     goto __pyx_L0;
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":40
- *         Dual(real=0.0, dual=1.0)
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":52
+ * 
+ *     # If input is a Dual number, call the sin() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.sin()
- *     return math_sin(x)
+ * 
  */
   }
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":42
- *     if isinstance(x, Dual):
- *         return x.sin()
+  /* "dual_autodiff_x/autodiff_tools.pyx":56
+ * 
+ *     # If input is a numpy array, call the np.sin method which will call the Dual class's sin method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.sin(x)
+ * 
+ */
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 56, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_ndarray); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 56, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_3); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 56, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__pyx_t_2) {
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":57
+ *     # If input is a numpy array, call the np.sin method which will call the Dual class's sin method
+ *     if isinstance(x, np.ndarray):
+ *         return np.sin(x)             # <<<<<<<<<<<<<<
+ * 
+ *     # If input is a scalar, call the math.sin method
+ */
+    __Pyx_XDECREF(__pyx_r);
+    __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 57, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_sin); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 57, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_4);
+    __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+    __pyx_t_1 = NULL;
+    __pyx_t_5 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_4))) {
+      __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+      if (likely(__pyx_t_1)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+        __Pyx_INCREF(__pyx_t_1);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_4, function);
+        __pyx_t_5 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+      __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+      __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 57, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_3);
+      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+    }
+    __pyx_r = __pyx_t_3;
+    __pyx_t_3 = 0;
+    goto __pyx_L0;
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":56
+ * 
+ *     # If input is a numpy array, call the np.sin method which will call the Dual class's sin method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.sin(x)
+ * 
+ */
+  }
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":60
+ * 
+ *     # If input is a scalar, call the math.sin method
  *     return math_sin(x)             # <<<<<<<<<<<<<<
  * 
- * # Call Dual's cos() method
+ * 
  */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_math_sin); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 42, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = NULL;
+  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_math_sin); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 60, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_4);
+  __pyx_t_1 = NULL;
   __pyx_t_5 = 0;
   #if CYTHON_UNPACK_METHODS
-  if (unlikely(PyMethod_Check(__pyx_t_3))) {
-    __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_3);
-    if (likely(__pyx_t_4)) {
-      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
-      __Pyx_INCREF(__pyx_t_4);
+  if (unlikely(PyMethod_Check(__pyx_t_4))) {
+    __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+    if (likely(__pyx_t_1)) {
+      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+      __Pyx_INCREF(__pyx_t_1);
       __Pyx_INCREF(function);
-      __Pyx_DECREF_SET(__pyx_t_3, function);
+      __Pyx_DECREF_SET(__pyx_t_4, function);
       __pyx_t_5 = 1;
     }
   }
   #endif
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_x};
-    __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
-    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 42, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_1);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 60, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   }
-  __pyx_r = __pyx_t_1;
-  __pyx_t_1 = 0;
+  __pyx_r = __pyx_t_3;
+  __pyx_t_3 = 0;
   goto __pyx_L0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":23
+  /* "dual_autodiff_x/autodiff_tools.pyx":25
  * 
  * # Call Dual's sin() method
  * def sin(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the sine of a number or a Dual number.
+ *     Compute the sin of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
   /* function exit code */
@@ -2925,12 +3338,12 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_sin(CYTHON_UNUSED P
   return __pyx_r;
 }
 
-/* "dual_autodiff_x/autodiff_tools.pyx":45
+/* "dual_autodiff_x/autodiff_tools.pyx":64
  * 
  * # Call Dual's cos() method
  * def cos(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the cosine of a number or a Dual number.
+ *     Compute the cos of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
 /* Python wrapper */
@@ -2941,7 +3354,7 @@ PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_2cos, "\n    Compute the cosine of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The cosine of the input.\n\n    Examples:\n        >>> from dual_autodiff import cos, Dual\n        >>> cos(0)\n        1.0\n        >>> cos(Dual(0, 1))\n        Dual(real=1.0, dual=0.0)\n    ");
+PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_2cos, "\n    Compute the cos of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The cosine of the input.\n\n    Examples:\n        >>> from dual_autodiff import cos, Dual\n    1. With a scalar input:\n        >>> cos(0)\n        1.0\n    2. With a Dual number input:\n        >>> cos(Dual(0, 1))\n        Dual(real=1.0, dual=0.0)\n    3. With a Dual numpy array input:\n        >>> cos(np.array([Dual(2,3), Dual(3,4)]))\n        array([Dual(real=-0.4161..., dual=-2.7278...),\n        Dual(real=-0.9899..., dual=-0.1411...)],\n        dtype=object)\n    ");
 static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_3cos = {"cos", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_3cos, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_2cos};
 static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_3cos(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
@@ -2987,12 +3400,12 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[0]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 45, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 64, __pyx_L3_error)
         else goto __pyx_L5_argtuple_error;
       }
       if (unlikely(kw_args > 0)) {
         const Py_ssize_t kwd_pos_args = __pyx_nargs;
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "cos") < 0)) __PYX_ERR(0, 45, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "cos") < 0)) __PYX_ERR(0, 64, __pyx_L3_error)
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
@@ -3003,7 +3416,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("cos", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 45, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("cos", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 64, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -3043,28 +3456,28 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_2cos(CYTHON_UNUSED 
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("cos", 1);
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":62
- *         Dual(real=1.0, dual=0.0)
- *     """
+  /* "dual_autodiff_x/autodiff_tools.pyx":90
+ * 
+ *     # If input is a Dual number, call the cos() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.cos()
- *     return math_cos(x)
+ * 
  */
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 62, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 90, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 62, __pyx_L1_error)
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 90, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_2) {
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":63
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":91
+ *     # If input is a Dual number, call the cos() method from Dual class
  *     if isinstance(x, Dual):
  *         return x.cos()             # <<<<<<<<<<<<<<
- *     return math_cos(x)
  * 
+ *     # If input is a numpy array, call the np.cos method which will call the Dual class's cos method
  */
     __Pyx_XDECREF(__pyx_r);
-    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_cos); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 63, __pyx_L1_error)
+    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_cos); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 91, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __pyx_t_4 = NULL;
     __pyx_t_5 = 0;
@@ -3084,7 +3497,7 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_2cos(CYTHON_UNUSED 
       PyObject *__pyx_callargs[2] = {__pyx_t_4, NULL};
       __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 63, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 91, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     }
@@ -3092,57 +3505,121 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_2cos(CYTHON_UNUSED 
     __pyx_t_1 = 0;
     goto __pyx_L0;
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":62
- *         Dual(real=1.0, dual=0.0)
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":90
+ * 
+ *     # If input is a Dual number, call the cos() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.cos()
- *     return math_cos(x)
+ * 
  */
   }
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":64
- *     if isinstance(x, Dual):
- *         return x.cos()
+  /* "dual_autodiff_x/autodiff_tools.pyx":94
+ * 
+ *     # If input is a numpy array, call the np.cos method which will call the Dual class's cos method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.cos(x)
+ * 
+ */
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 94, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_ndarray); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 94, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_3); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 94, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__pyx_t_2) {
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":95
+ *     # If input is a numpy array, call the np.cos method which will call the Dual class's cos method
+ *     if isinstance(x, np.ndarray):
+ *         return np.cos(x)             # <<<<<<<<<<<<<<
+ * 
+ *     # If input is a scalar, call the math.cos method
+ */
+    __Pyx_XDECREF(__pyx_r);
+    __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 95, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_cos); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 95, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_4);
+    __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+    __pyx_t_1 = NULL;
+    __pyx_t_5 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_4))) {
+      __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+      if (likely(__pyx_t_1)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+        __Pyx_INCREF(__pyx_t_1);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_4, function);
+        __pyx_t_5 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+      __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+      __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 95, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_3);
+      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+    }
+    __pyx_r = __pyx_t_3;
+    __pyx_t_3 = 0;
+    goto __pyx_L0;
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":94
+ * 
+ *     # If input is a numpy array, call the np.cos method which will call the Dual class's cos method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.cos(x)
+ * 
+ */
+  }
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":98
+ * 
+ *     # If input is a scalar, call the math.cos method
  *     return math_cos(x)             # <<<<<<<<<<<<<<
  * 
- * # Call Dual's tan() method
+ * 
  */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_math_cos); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 64, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = NULL;
+  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_math_cos); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 98, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_4);
+  __pyx_t_1 = NULL;
   __pyx_t_5 = 0;
   #if CYTHON_UNPACK_METHODS
-  if (unlikely(PyMethod_Check(__pyx_t_3))) {
-    __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_3);
-    if (likely(__pyx_t_4)) {
-      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
-      __Pyx_INCREF(__pyx_t_4);
+  if (unlikely(PyMethod_Check(__pyx_t_4))) {
+    __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+    if (likely(__pyx_t_1)) {
+      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+      __Pyx_INCREF(__pyx_t_1);
       __Pyx_INCREF(function);
-      __Pyx_DECREF_SET(__pyx_t_3, function);
+      __Pyx_DECREF_SET(__pyx_t_4, function);
       __pyx_t_5 = 1;
     }
   }
   #endif
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_x};
-    __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
-    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 64, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_1);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 98, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   }
-  __pyx_r = __pyx_t_1;
-  __pyx_t_1 = 0;
+  __pyx_r = __pyx_t_3;
+  __pyx_t_3 = 0;
   goto __pyx_L0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":45
+  /* "dual_autodiff_x/autodiff_tools.pyx":64
  * 
  * # Call Dual's cos() method
  * def cos(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the cosine of a number or a Dual number.
+ *     Compute the cos of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
   /* function exit code */
@@ -3158,12 +3635,12 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_2cos(CYTHON_UNUSED 
   return __pyx_r;
 }
 
-/* "dual_autodiff_x/autodiff_tools.pyx":67
- * 
+/* "dual_autodiff_x/autodiff_tools.pyx":103
  * # Call Dual's tan() method
+ * # Errors thrown by Dual class (dual.py) automatically
  * def tan(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the tangent of a number or a Dual number.
+ *     Compute the tangent of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
 /* Python wrapper */
@@ -3174,7 +3651,7 @@ PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_4tan, "\n    Compute the tangent of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The tangent of the input.\n\n    Raises:\n        ValueError: The tangent function is undefined as cosine of real part equals 0\n\n    Examples:\n        >>> from dual_autodiff import tan, Dual\n        >>> tan(0)\n        0.0\n        >>> tan(Dual(0, 1))\n        Dual(real=0.0, dual=1.0)\n    ");
+PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_4tan, "\n    Compute the tangent of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The tangent of the input.\n\n    Raises:\n        ValueError: The tangent function is undefined as cosine of real part equals 0.\n\n    Examples:\n        >>> from dual_autodiff import tan, Dual\n    1. With a scalar input:\n        >>> tan(0)\n        0.0\n    2. With a Dual number input:\n        >>> tan(Dual(0, 1))\n        Dual(real=0.0, dual=1.0)\n    3. With a Dual numpy array input:\n        >>> tan(np.array([Dual(2,3), Dual(3,4)]))\n        array([Dual(real=-2.1850..., dual=5.7744...),\n        Dual(real=-0.1425..., dual=16.2574...)],\n        dtype=object)\n    ");
 static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_5tan = {"tan", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_5tan, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_4tan};
 static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_5tan(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
@@ -3220,12 +3697,12 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[0]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 67, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 103, __pyx_L3_error)
         else goto __pyx_L5_argtuple_error;
       }
       if (unlikely(kw_args > 0)) {
         const Py_ssize_t kwd_pos_args = __pyx_nargs;
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "tan") < 0)) __PYX_ERR(0, 67, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "tan") < 0)) __PYX_ERR(0, 103, __pyx_L3_error)
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
@@ -3236,7 +3713,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("tan", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 67, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("tan", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 103, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -3276,28 +3753,28 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_4tan(CYTHON_UNUSED 
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("tan", 1);
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":87
- *         Dual(real=0.0, dual=1.0)
- *     """
+  /* "dual_autodiff_x/autodiff_tools.pyx":132
+ * 
+ *     # If input is a Dual number, call the tan() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.tan()
- *     return math_tan(x)
+ * 
  */
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 87, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 132, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 87, __pyx_L1_error)
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 132, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_2) {
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":88
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":133
+ *     # If input is a Dual number, call the tan() method from Dual class
  *     if isinstance(x, Dual):
  *         return x.tan()             # <<<<<<<<<<<<<<
- *     return math_tan(x)
  * 
+ *     # If input is a numpy array, call the np.tan method which will call the Dual class's tan method
  */
     __Pyx_XDECREF(__pyx_r);
-    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_tan); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 88, __pyx_L1_error)
+    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_tan); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 133, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __pyx_t_4 = NULL;
     __pyx_t_5 = 0;
@@ -3317,7 +3794,7 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_4tan(CYTHON_UNUSED 
       PyObject *__pyx_callargs[2] = {__pyx_t_4, NULL};
       __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 88, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 133, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     }
@@ -3325,57 +3802,121 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_4tan(CYTHON_UNUSED 
     __pyx_t_1 = 0;
     goto __pyx_L0;
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":87
- *         Dual(real=0.0, dual=1.0)
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":132
+ * 
+ *     # If input is a Dual number, call the tan() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.tan()
- *     return math_tan(x)
+ * 
  */
   }
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":89
- *     if isinstance(x, Dual):
- *         return x.tan()
+  /* "dual_autodiff_x/autodiff_tools.pyx":136
+ * 
+ *     # If input is a numpy array, call the np.tan method which will call the Dual class's tan method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.tan(x)
+ * 
+ */
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 136, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_ndarray); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 136, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_3); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 136, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__pyx_t_2) {
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":137
+ *     # If input is a numpy array, call the np.tan method which will call the Dual class's tan method
+ *     if isinstance(x, np.ndarray):
+ *         return np.tan(x)             # <<<<<<<<<<<<<<
+ * 
+ *     # If input is a scalar, call the math.tan method
+ */
+    __Pyx_XDECREF(__pyx_r);
+    __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 137, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_tan); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 137, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_4);
+    __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+    __pyx_t_1 = NULL;
+    __pyx_t_5 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_4))) {
+      __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+      if (likely(__pyx_t_1)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+        __Pyx_INCREF(__pyx_t_1);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_4, function);
+        __pyx_t_5 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+      __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+      __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 137, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_3);
+      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+    }
+    __pyx_r = __pyx_t_3;
+    __pyx_t_3 = 0;
+    goto __pyx_L0;
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":136
+ * 
+ *     # If input is a numpy array, call the np.tan method which will call the Dual class's tan method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.tan(x)
+ * 
+ */
+  }
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":140
+ * 
+ *     # If input is a scalar, call the math.tan method
  *     return math_tan(x)             # <<<<<<<<<<<<<<
  * 
- * # Call Dual's arcsin() method
+ * 
  */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_math_tan); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 89, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = NULL;
+  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_math_tan); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 140, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_4);
+  __pyx_t_1 = NULL;
   __pyx_t_5 = 0;
   #if CYTHON_UNPACK_METHODS
-  if (unlikely(PyMethod_Check(__pyx_t_3))) {
-    __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_3);
-    if (likely(__pyx_t_4)) {
-      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
-      __Pyx_INCREF(__pyx_t_4);
+  if (unlikely(PyMethod_Check(__pyx_t_4))) {
+    __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+    if (likely(__pyx_t_1)) {
+      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+      __Pyx_INCREF(__pyx_t_1);
       __Pyx_INCREF(function);
-      __Pyx_DECREF_SET(__pyx_t_3, function);
+      __Pyx_DECREF_SET(__pyx_t_4, function);
       __pyx_t_5 = 1;
     }
   }
   #endif
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_x};
-    __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
-    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 89, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_1);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 140, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   }
-  __pyx_r = __pyx_t_1;
-  __pyx_t_1 = 0;
+  __pyx_r = __pyx_t_3;
+  __pyx_t_3 = 0;
   goto __pyx_L0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":67
- * 
+  /* "dual_autodiff_x/autodiff_tools.pyx":103
  * # Call Dual's tan() method
+ * # Errors thrown by Dual class (dual.py) automatically
  * def tan(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the tangent of a number or a Dual number.
+ *     Compute the tangent of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
   /* function exit code */
@@ -3391,25 +3932,25 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_4tan(CYTHON_UNUSED 
   return __pyx_r;
 }
 
-/* "dual_autodiff_x/autodiff_tools.pyx":93
+/* "dual_autodiff_x/autodiff_tools.pyx":145
  * # Call Dual's arcsin() method
- * 
- * def asin(x):             # <<<<<<<<<<<<<<
+ * # Errors thrown by Dual class (dual.py) automatically
+ * def arcsin(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the arcsine of a number or a Dual number.
+ *     Compute the arcsine of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
 /* Python wrapper */
-static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_7asin(PyObject *__pyx_self, 
+static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_7arcsin(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
 PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 #else
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_6asin, "\n    Compute the arcsine of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The arcsine of the input.\n    \n    Raises:\n        ValueError: If the real part is outside the range [-1, 1].\n\n    Examples:\n        >>> from dual_autodiff import asin, Dual\n        >>> asin(0)\n        0.0\n        >>> asin(Dual(0, 1))\n        Dual(real=0.0, dual=1.0)\n    ");
-static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_7asin = {"asin", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_7asin, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_6asin};
-static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_7asin(PyObject *__pyx_self, 
+PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_6arcsin, "\n    Compute the arcsine of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The arcsine of the input.\n    \n    Raises:\n        ValueError: If a real part is outside the range [-1, 1].\n\n    Examples:\n        >>> from dual_autodiff import arcsin, Dual\n    1. With a scalar input:\n        >>> arcsin(0)\n        0.0\n    2. With a Dual number input:\n        >>> arcsin(Dual(0, 1))\n        Dual(real=0.0, dual=1.0)\n    3. With a Dual numpy array input:\n        >>> arcsin(np.array([Dual(0.5,1), Dual(0.3,2)]))\n        array([Dual(real=0.5235..., dual=1.1547...),\n        Dual(real=0.3046..., dual=2.0910...)],\n        dtype=object)\n    ");
+static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_7arcsin = {"arcsin", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_7arcsin, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_6arcsin};
+static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_7arcsin(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
 PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 #else
@@ -3427,7 +3968,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   int __pyx_clineno = 0;
   PyObject *__pyx_r = 0;
   __Pyx_RefNannyDeclarations
-  __Pyx_RefNannySetupContext("asin (wrapper)", 0);
+  __Pyx_RefNannySetupContext("arcsin (wrapper)", 0);
   #if !CYTHON_METH_FASTCALL
   #if CYTHON_ASSUME_SAFE_MACROS
   __pyx_nargs = PyTuple_GET_SIZE(__pyx_args);
@@ -3453,12 +3994,12 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[0]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 93, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 145, __pyx_L3_error)
         else goto __pyx_L5_argtuple_error;
       }
       if (unlikely(kw_args > 0)) {
         const Py_ssize_t kwd_pos_args = __pyx_nargs;
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "asin") < 0)) __PYX_ERR(0, 93, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "arcsin") < 0)) __PYX_ERR(0, 145, __pyx_L3_error)
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
@@ -3469,7 +4010,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("asin", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 93, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("arcsin", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 145, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -3479,11 +4020,11 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
       __Pyx_Arg_XDECREF_FASTCALL(values[__pyx_temp]);
     }
   }
-  __Pyx_AddTraceback("dual_autodiff_x.autodiff_tools.asin", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("dual_autodiff_x.autodiff_tools.arcsin", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __Pyx_RefNannyFinishContext();
   return NULL;
   __pyx_L4_argument_unpacking_done:;
-  __pyx_r = __pyx_pf_15dual_autodiff_x_14autodiff_tools_6asin(__pyx_self, __pyx_v_x);
+  __pyx_r = __pyx_pf_15dual_autodiff_x_14autodiff_tools_6arcsin(__pyx_self, __pyx_v_x);
 
   /* function exit code */
   {
@@ -3496,7 +4037,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   return __pyx_r;
 }
 
-static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_6asin(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x) {
+static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_6arcsin(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x) {
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   PyObject *__pyx_t_1 = NULL;
@@ -3507,30 +4048,30 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_6asin(CYTHON_UNUSED
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
-  __Pyx_RefNannySetupContext("asin", 1);
+  __Pyx_RefNannySetupContext("arcsin", 1);
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":113
- *         Dual(real=0.0, dual=1.0)
- *     """
+  /* "dual_autodiff_x/autodiff_tools.pyx":174
+ * 
+ *     # If input is a Dual number, call the arcsin() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
- *         return x.asin()
- *     return math_asin(x)
+ *         return x.arcsin()
+ * 
  */
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 113, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 174, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 113, __pyx_L1_error)
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 174, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_2) {
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":114
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":175
+ *     # If input is a Dual number, call the arcsin() method from Dual class
  *     if isinstance(x, Dual):
- *         return x.asin()             # <<<<<<<<<<<<<<
- *     return math_asin(x)
+ *         return x.arcsin()             # <<<<<<<<<<<<<<
  * 
+ *     # If input is a numpy array, call the np.arcsin method which will call the Dual class's arcsin method
  */
     __Pyx_XDECREF(__pyx_r);
-    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_asin); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 114, __pyx_L1_error)
+    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_arcsin); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 175, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __pyx_t_4 = NULL;
     __pyx_t_5 = 0;
@@ -3550,7 +4091,7 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_6asin(CYTHON_UNUSED
       PyObject *__pyx_callargs[2] = {__pyx_t_4, NULL};
       __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 114, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 175, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     }
@@ -3558,57 +4099,121 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_6asin(CYTHON_UNUSED
     __pyx_t_1 = 0;
     goto __pyx_L0;
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":113
- *         Dual(real=0.0, dual=1.0)
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":174
+ * 
+ *     # If input is a Dual number, call the arcsin() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
- *         return x.asin()
- *     return math_asin(x)
+ *         return x.arcsin()
+ * 
  */
   }
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":115
- *     if isinstance(x, Dual):
- *         return x.asin()
+  /* "dual_autodiff_x/autodiff_tools.pyx":178
+ * 
+ *     # If input is a numpy array, call the np.arcsin method which will call the Dual class's arcsin method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.arcsin(x)
+ * 
+ */
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 178, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_ndarray); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 178, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_3); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 178, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__pyx_t_2) {
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":179
+ *     # If input is a numpy array, call the np.arcsin method which will call the Dual class's arcsin method
+ *     if isinstance(x, np.ndarray):
+ *         return np.arcsin(x)             # <<<<<<<<<<<<<<
+ * 
+ *     # If input is a scalar, call the math.asin method
+ */
+    __Pyx_XDECREF(__pyx_r);
+    __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 179, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_arcsin); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 179, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_4);
+    __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+    __pyx_t_1 = NULL;
+    __pyx_t_5 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_4))) {
+      __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+      if (likely(__pyx_t_1)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+        __Pyx_INCREF(__pyx_t_1);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_4, function);
+        __pyx_t_5 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+      __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+      __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 179, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_3);
+      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+    }
+    __pyx_r = __pyx_t_3;
+    __pyx_t_3 = 0;
+    goto __pyx_L0;
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":178
+ * 
+ *     # If input is a numpy array, call the np.arcsin method which will call the Dual class's arcsin method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.arcsin(x)
+ * 
+ */
+  }
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":182
+ * 
+ *     # If input is a scalar, call the math.asin method
  *     return math_asin(x)             # <<<<<<<<<<<<<<
  * 
- * # Call Dual's arccos() method
+ * 
  */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_math_asin); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 115, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = NULL;
+  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_math_asin); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 182, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_4);
+  __pyx_t_1 = NULL;
   __pyx_t_5 = 0;
   #if CYTHON_UNPACK_METHODS
-  if (unlikely(PyMethod_Check(__pyx_t_3))) {
-    __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_3);
-    if (likely(__pyx_t_4)) {
-      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
-      __Pyx_INCREF(__pyx_t_4);
+  if (unlikely(PyMethod_Check(__pyx_t_4))) {
+    __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+    if (likely(__pyx_t_1)) {
+      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+      __Pyx_INCREF(__pyx_t_1);
       __Pyx_INCREF(function);
-      __Pyx_DECREF_SET(__pyx_t_3, function);
+      __Pyx_DECREF_SET(__pyx_t_4, function);
       __pyx_t_5 = 1;
     }
   }
   #endif
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_x};
-    __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
-    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 115, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_1);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 182, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   }
-  __pyx_r = __pyx_t_1;
-  __pyx_t_1 = 0;
+  __pyx_r = __pyx_t_3;
+  __pyx_t_3 = 0;
   goto __pyx_L0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":93
+  /* "dual_autodiff_x/autodiff_tools.pyx":145
  * # Call Dual's arcsin() method
- * 
- * def asin(x):             # <<<<<<<<<<<<<<
+ * # Errors thrown by Dual class (dual.py) automatically
+ * def arcsin(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the arcsine of a number or a Dual number.
+ *     Compute the arcsine of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
   /* function exit code */
@@ -3616,7 +4221,7 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_6asin(CYTHON_UNUSED
   __Pyx_XDECREF(__pyx_t_1);
   __Pyx_XDECREF(__pyx_t_3);
   __Pyx_XDECREF(__pyx_t_4);
-  __Pyx_AddTraceback("dual_autodiff_x.autodiff_tools.asin", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("dual_autodiff_x.autodiff_tools.arcsin", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
   __Pyx_XGIVEREF(__pyx_r);
@@ -3624,25 +4229,25 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_6asin(CYTHON_UNUSED
   return __pyx_r;
 }
 
-/* "dual_autodiff_x/autodiff_tools.pyx":118
- * 
+/* "dual_autodiff_x/autodiff_tools.pyx":187
  * # Call Dual's arccos() method
- * def acos(x):             # <<<<<<<<<<<<<<
+ * # Errors thrown by Dual class (dual.py) automatically
+ * def arccos(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the arccosine of a number or a Dual number.
+ *     Compute the arccosine of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
 /* Python wrapper */
-static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_9acos(PyObject *__pyx_self, 
+static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_9arccos(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
 PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 #else
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_8acos, "\n    Compute the arccosine of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The arccosine of the input.\n\n    Raises:\n        ValueError: If the real part is outside the range [-1, 1].\n\n    Examples:\n        >>> from dual_autodiff import acos, Dual\n        >>> acos(1)\n        0.0\n        >>> acos(Dual(1, 0))\n        Dual(real=0.0, dual=0.0)\n    ");
-static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_9acos = {"acos", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_9acos, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_8acos};
-static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_9acos(PyObject *__pyx_self, 
+PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_8arccos, "\n    Compute the arccosine of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Raises:\n        ValueError: If the real part is outside the range [-1, 1].\n\n    Examples:\n        >>> from dual_autodiff import arccos, Dual\n    1. With a scalar input:\n        >>> arccos(1)\n        0.0\n    2. With a Dual number input:\n        >>> arccos(Dual(1, 1))\n        Dual(real=0.0, dual=-1.0)\n    3. With a Dual numpy array input:\n        >>> arccos(np.array([Dual(0.5,1), Dual(0.3,2)]))\n        array([Dual(real=1.0471..., dual=-1.1547...),\n        Dual(real=1.2661..., dual=-2.0910...)],\n        dtype=object)\n    ");
+static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_9arccos = {"arccos", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_9arccos, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_8arccos};
+static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_9arccos(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
 PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 #else
@@ -3660,7 +4265,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   int __pyx_clineno = 0;
   PyObject *__pyx_r = 0;
   __Pyx_RefNannyDeclarations
-  __Pyx_RefNannySetupContext("acos (wrapper)", 0);
+  __Pyx_RefNannySetupContext("arccos (wrapper)", 0);
   #if !CYTHON_METH_FASTCALL
   #if CYTHON_ASSUME_SAFE_MACROS
   __pyx_nargs = PyTuple_GET_SIZE(__pyx_args);
@@ -3686,12 +4291,12 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[0]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 118, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 187, __pyx_L3_error)
         else goto __pyx_L5_argtuple_error;
       }
       if (unlikely(kw_args > 0)) {
         const Py_ssize_t kwd_pos_args = __pyx_nargs;
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "acos") < 0)) __PYX_ERR(0, 118, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "arccos") < 0)) __PYX_ERR(0, 187, __pyx_L3_error)
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
@@ -3702,7 +4307,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("acos", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 118, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("arccos", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 187, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -3712,11 +4317,11 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
       __Pyx_Arg_XDECREF_FASTCALL(values[__pyx_temp]);
     }
   }
-  __Pyx_AddTraceback("dual_autodiff_x.autodiff_tools.acos", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("dual_autodiff_x.autodiff_tools.arccos", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __Pyx_RefNannyFinishContext();
   return NULL;
   __pyx_L4_argument_unpacking_done:;
-  __pyx_r = __pyx_pf_15dual_autodiff_x_14autodiff_tools_8acos(__pyx_self, __pyx_v_x);
+  __pyx_r = __pyx_pf_15dual_autodiff_x_14autodiff_tools_8arccos(__pyx_self, __pyx_v_x);
 
   /* function exit code */
   {
@@ -3729,7 +4334,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   return __pyx_r;
 }
 
-static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_8acos(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x) {
+static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_8arccos(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x) {
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   PyObject *__pyx_t_1 = NULL;
@@ -3740,30 +4345,30 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_8acos(CYTHON_UNUSED
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
-  __Pyx_RefNannySetupContext("acos", 1);
+  __Pyx_RefNannySetupContext("arccos", 1);
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":138
- *         Dual(real=0.0, dual=0.0)
- *     """
+  /* "dual_autodiff_x/autodiff_tools.pyx":213
+ * 
+ *     # If input is a Dual number, call the acos() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
- *         return x.acos()
- *     return math_acos(x)
+ *         return x.arccos()
+ * 
  */
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 138, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 213, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 138, __pyx_L1_error)
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 213, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_2) {
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":139
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":214
+ *     # If input is a Dual number, call the acos() method from Dual class
  *     if isinstance(x, Dual):
- *         return x.acos()             # <<<<<<<<<<<<<<
- *     return math_acos(x)
+ *         return x.arccos()             # <<<<<<<<<<<<<<
  * 
+ *     # If input is a numpy array, call the np.arccos method which will call the Dual class's acos method
  */
     __Pyx_XDECREF(__pyx_r);
-    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_acos); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 139, __pyx_L1_error)
+    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_arccos); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 214, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __pyx_t_4 = NULL;
     __pyx_t_5 = 0;
@@ -3783,7 +4388,7 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_8acos(CYTHON_UNUSED
       PyObject *__pyx_callargs[2] = {__pyx_t_4, NULL};
       __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 139, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 214, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     }
@@ -3791,57 +4396,121 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_8acos(CYTHON_UNUSED
     __pyx_t_1 = 0;
     goto __pyx_L0;
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":138
- *         Dual(real=0.0, dual=0.0)
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":213
+ * 
+ *     # If input is a Dual number, call the acos() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
- *         return x.acos()
- *     return math_acos(x)
+ *         return x.arccos()
+ * 
  */
   }
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":140
- *     if isinstance(x, Dual):
- *         return x.acos()
+  /* "dual_autodiff_x/autodiff_tools.pyx":217
+ * 
+ *     # If input is a numpy array, call the np.arccos method which will call the Dual class's acos method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.arccos(x)
+ * 
+ */
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 217, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_ndarray); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 217, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_3); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 217, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__pyx_t_2) {
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":218
+ *     # If input is a numpy array, call the np.arccos method which will call the Dual class's acos method
+ *     if isinstance(x, np.ndarray):
+ *         return np.arccos(x)             # <<<<<<<<<<<<<<
+ * 
+ *     # If input is a scalar, call the math.acos method
+ */
+    __Pyx_XDECREF(__pyx_r);
+    __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 218, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_arccos); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 218, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_4);
+    __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+    __pyx_t_1 = NULL;
+    __pyx_t_5 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_4))) {
+      __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+      if (likely(__pyx_t_1)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+        __Pyx_INCREF(__pyx_t_1);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_4, function);
+        __pyx_t_5 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+      __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+      __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 218, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_3);
+      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+    }
+    __pyx_r = __pyx_t_3;
+    __pyx_t_3 = 0;
+    goto __pyx_L0;
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":217
+ * 
+ *     # If input is a numpy array, call the np.arccos method which will call the Dual class's acos method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.arccos(x)
+ * 
+ */
+  }
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":221
+ * 
+ *     # If input is a scalar, call the math.acos method
  *     return math_acos(x)             # <<<<<<<<<<<<<<
  * 
- * # Call Dual's arctan() method
+ * 
  */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_math_acos); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 140, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = NULL;
+  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_math_acos); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 221, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_4);
+  __pyx_t_1 = NULL;
   __pyx_t_5 = 0;
   #if CYTHON_UNPACK_METHODS
-  if (unlikely(PyMethod_Check(__pyx_t_3))) {
-    __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_3);
-    if (likely(__pyx_t_4)) {
-      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
-      __Pyx_INCREF(__pyx_t_4);
+  if (unlikely(PyMethod_Check(__pyx_t_4))) {
+    __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+    if (likely(__pyx_t_1)) {
+      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+      __Pyx_INCREF(__pyx_t_1);
       __Pyx_INCREF(function);
-      __Pyx_DECREF_SET(__pyx_t_3, function);
+      __Pyx_DECREF_SET(__pyx_t_4, function);
       __pyx_t_5 = 1;
     }
   }
   #endif
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_x};
-    __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
-    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 140, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_1);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 221, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   }
-  __pyx_r = __pyx_t_1;
-  __pyx_t_1 = 0;
+  __pyx_r = __pyx_t_3;
+  __pyx_t_3 = 0;
   goto __pyx_L0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":118
- * 
+  /* "dual_autodiff_x/autodiff_tools.pyx":187
  * # Call Dual's arccos() method
- * def acos(x):             # <<<<<<<<<<<<<<
+ * # Errors thrown by Dual class (dual.py) automatically
+ * def arccos(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the arccosine of a number or a Dual number.
+ *     Compute the arccosine of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
   /* function exit code */
@@ -3849,7 +4518,7 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_8acos(CYTHON_UNUSED
   __Pyx_XDECREF(__pyx_t_1);
   __Pyx_XDECREF(__pyx_t_3);
   __Pyx_XDECREF(__pyx_t_4);
-  __Pyx_AddTraceback("dual_autodiff_x.autodiff_tools.acos", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("dual_autodiff_x.autodiff_tools.arccos", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
   __Pyx_XGIVEREF(__pyx_r);
@@ -3857,25 +4526,25 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_8acos(CYTHON_UNUSED
   return __pyx_r;
 }
 
-/* "dual_autodiff_x/autodiff_tools.pyx":143
+/* "dual_autodiff_x/autodiff_tools.pyx":225
  * 
  * # Call Dual's arctan() method
- * def atan(x):             # <<<<<<<<<<<<<<
+ * def arctan(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the arctangent of a number or a Dual number.
+ *     Compute the arctangent of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
 /* Python wrapper */
-static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_11atan(PyObject *__pyx_self, 
+static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_11arctan(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
 PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 #else
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_10atan, "\n    Compute the arctangent of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The arctangent of the input.\n\n    Examples:\n        >>> from dual_autodiff import atan, Dual\n        >>> atan(1)\n        0.7853981633974483\n        >>> atan(Dual(1, 1))\n        Dual(real=0.7853981633974483, dual=0.5)\n    ");
-static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_11atan = {"atan", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_11atan, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_10atan};
-static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_11atan(PyObject *__pyx_self, 
+PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_10arctan, "\n    Compute the arctangent of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The arctangent of the input.\n\n    Examples:\n        >>> from dual_autodiff import arctan, Dual\n    1. With a scalar input:\n        >>> arctan(1)\n        0.7853981633974483\n    2. With a Dual number input:\n        >>> arctan(Dual(1, 1))\n        Dual(real=0.7853981633974483, dual=0.5)\n    3. With a Dual numpy array input:\n        >>> arctan(np.array([Dual(1,1), Dual(0.5,2)]))\n        array([Dual(real=0.7853..., dual=0.5),\n        Dual(real=0.4636..., dual=1.6)],\n        dtype=object)\n    ");
+static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_11arctan = {"arctan", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_11arctan, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_10arctan};
+static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_11arctan(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
 PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 #else
@@ -3893,7 +4562,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   int __pyx_clineno = 0;
   PyObject *__pyx_r = 0;
   __Pyx_RefNannyDeclarations
-  __Pyx_RefNannySetupContext("atan (wrapper)", 0);
+  __Pyx_RefNannySetupContext("arctan (wrapper)", 0);
   #if !CYTHON_METH_FASTCALL
   #if CYTHON_ASSUME_SAFE_MACROS
   __pyx_nargs = PyTuple_GET_SIZE(__pyx_args);
@@ -3919,12 +4588,12 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[0]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 143, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 225, __pyx_L3_error)
         else goto __pyx_L5_argtuple_error;
       }
       if (unlikely(kw_args > 0)) {
         const Py_ssize_t kwd_pos_args = __pyx_nargs;
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "atan") < 0)) __PYX_ERR(0, 143, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "arctan") < 0)) __PYX_ERR(0, 225, __pyx_L3_error)
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
@@ -3935,7 +4604,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("atan", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 143, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("arctan", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 225, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -3945,11 +4614,11 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
       __Pyx_Arg_XDECREF_FASTCALL(values[__pyx_temp]);
     }
   }
-  __Pyx_AddTraceback("dual_autodiff_x.autodiff_tools.atan", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("dual_autodiff_x.autodiff_tools.arctan", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __Pyx_RefNannyFinishContext();
   return NULL;
   __pyx_L4_argument_unpacking_done:;
-  __pyx_r = __pyx_pf_15dual_autodiff_x_14autodiff_tools_10atan(__pyx_self, __pyx_v_x);
+  __pyx_r = __pyx_pf_15dual_autodiff_x_14autodiff_tools_10arctan(__pyx_self, __pyx_v_x);
 
   /* function exit code */
   {
@@ -3962,7 +4631,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   return __pyx_r;
 }
 
-static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_10atan(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x) {
+static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_10arctan(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_x) {
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   PyObject *__pyx_t_1 = NULL;
@@ -3973,30 +4642,30 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_10atan(CYTHON_UNUSE
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
-  __Pyx_RefNannySetupContext("atan", 1);
+  __Pyx_RefNannySetupContext("arctan", 1);
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":160
- *         Dual(real=0.7853981633974483, dual=0.5)
- *     """
+  /* "dual_autodiff_x/autodiff_tools.pyx":252
+ * 
+ *     # If input is a Dual number, call the atan() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
- *         return x.atan()
- *     return math_atan(x)
+ *         return x.arctan()
+ * 
  */
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 160, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 252, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 160, __pyx_L1_error)
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 252, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_2) {
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":161
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":253
+ *     # If input is a Dual number, call the atan() method from Dual class
  *     if isinstance(x, Dual):
- *         return x.atan()             # <<<<<<<<<<<<<<
- *     return math_atan(x)
+ *         return x.arctan()             # <<<<<<<<<<<<<<
  * 
+ *     # If input is a numpy array, call the np.arctan method which will call the Dual class's atan method
  */
     __Pyx_XDECREF(__pyx_r);
-    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_atan); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 161, __pyx_L1_error)
+    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_arctan); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 253, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __pyx_t_4 = NULL;
     __pyx_t_5 = 0;
@@ -4016,7 +4685,7 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_10atan(CYTHON_UNUSE
       PyObject *__pyx_callargs[2] = {__pyx_t_4, NULL};
       __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 161, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 253, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     }
@@ -4024,57 +4693,121 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_10atan(CYTHON_UNUSE
     __pyx_t_1 = 0;
     goto __pyx_L0;
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":160
- *         Dual(real=0.7853981633974483, dual=0.5)
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":252
+ * 
+ *     # If input is a Dual number, call the atan() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
- *         return x.atan()
- *     return math_atan(x)
+ *         return x.arctan()
+ * 
  */
   }
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":162
- *     if isinstance(x, Dual):
- *         return x.atan()
+  /* "dual_autodiff_x/autodiff_tools.pyx":256
+ * 
+ *     # If input is a numpy array, call the np.arctan method which will call the Dual class's atan method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.arctan(x)
+ * 
+ */
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 256, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_ndarray); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 256, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_3); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 256, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__pyx_t_2) {
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":257
+ *     # If input is a numpy array, call the np.arctan method which will call the Dual class's atan method
+ *     if isinstance(x, np.ndarray):
+ *         return np.arctan(x)             # <<<<<<<<<<<<<<
+ * 
+ *     # If input is a scalar, call the math.atan method
+ */
+    __Pyx_XDECREF(__pyx_r);
+    __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 257, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_arctan); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 257, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_4);
+    __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+    __pyx_t_1 = NULL;
+    __pyx_t_5 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_4))) {
+      __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+      if (likely(__pyx_t_1)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+        __Pyx_INCREF(__pyx_t_1);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_4, function);
+        __pyx_t_5 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+      __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+      __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 257, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_3);
+      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+    }
+    __pyx_r = __pyx_t_3;
+    __pyx_t_3 = 0;
+    goto __pyx_L0;
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":256
+ * 
+ *     # If input is a numpy array, call the np.arctan method which will call the Dual class's atan method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.arctan(x)
+ * 
+ */
+  }
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":260
+ * 
+ *     # If input is a scalar, call the math.atan method
  *     return math_atan(x)             # <<<<<<<<<<<<<<
  * 
- * # Call Dual's sinh() method
+ * 
  */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_math_atan); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 162, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = NULL;
+  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_math_atan); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 260, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_4);
+  __pyx_t_1 = NULL;
   __pyx_t_5 = 0;
   #if CYTHON_UNPACK_METHODS
-  if (unlikely(PyMethod_Check(__pyx_t_3))) {
-    __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_3);
-    if (likely(__pyx_t_4)) {
-      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
-      __Pyx_INCREF(__pyx_t_4);
+  if (unlikely(PyMethod_Check(__pyx_t_4))) {
+    __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+    if (likely(__pyx_t_1)) {
+      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+      __Pyx_INCREF(__pyx_t_1);
       __Pyx_INCREF(function);
-      __Pyx_DECREF_SET(__pyx_t_3, function);
+      __Pyx_DECREF_SET(__pyx_t_4, function);
       __pyx_t_5 = 1;
     }
   }
   #endif
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_x};
-    __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
-    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 162, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_1);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 260, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   }
-  __pyx_r = __pyx_t_1;
-  __pyx_t_1 = 0;
+  __pyx_r = __pyx_t_3;
+  __pyx_t_3 = 0;
   goto __pyx_L0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":143
+  /* "dual_autodiff_x/autodiff_tools.pyx":225
  * 
  * # Call Dual's arctan() method
- * def atan(x):             # <<<<<<<<<<<<<<
+ * def arctan(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the arctangent of a number or a Dual number.
+ *     Compute the arctangent of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
   /* function exit code */
@@ -4082,7 +4815,7 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_10atan(CYTHON_UNUSE
   __Pyx_XDECREF(__pyx_t_1);
   __Pyx_XDECREF(__pyx_t_3);
   __Pyx_XDECREF(__pyx_t_4);
-  __Pyx_AddTraceback("dual_autodiff_x.autodiff_tools.atan", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_AddTraceback("dual_autodiff_x.autodiff_tools.arctan", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
   __Pyx_XGIVEREF(__pyx_r);
@@ -4090,12 +4823,12 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_10atan(CYTHON_UNUSE
   return __pyx_r;
 }
 
-/* "dual_autodiff_x/autodiff_tools.pyx":165
+/* "dual_autodiff_x/autodiff_tools.pyx":264
  * 
  * # Call Dual's sinh() method
  * def sinh(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the hyperbolic sine of a number or a Dual number.
+ *     Compute the hyperbolic sine of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
 /* Python wrapper */
@@ -4106,7 +4839,7 @@ PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_12sinh, "\n    Compute the hyperbolic sine of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The hyperbolic sine of the input.\n\n    Examples:\n        >>> from dual_autodiff import sinh, Dual\n        >>> sinh(1)\n        1.1752011936438014\n        >>> sinh(Dual(1, 1))\n        Dual(real=1.1752011936438014, dual=1.5430806348152437)\n    ");
+PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_12sinh, "\n    Compute the hyperbolic sine of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The hyperbolic sine of the input.\n\n    Examples:\n        >>> from dual_autodiff import sinh, Dual\n    1. With a scalar input:\n        >>> sinh(1)\n        1.1752011936438014\n    2. With a Dual number input:\n        >>> sinh(Dual(1, 1))\n        Dual(real=1.1752011936438014, dual=1.5430806348152437)\n    3. With a Dual numpy array input:\n        >>> sinh(np.array([Dual(1,1), Dual(0.5,2)]))\n        array([Dual(real=1.1752..., dual=1.5430...),\n        Dual(real=0.5210..., dual=2.1276...)],\n        dtype=object)\n    ");
 static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_13sinh = {"sinh", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_13sinh, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_12sinh};
 static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_13sinh(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
@@ -4152,12 +4885,12 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[0]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 165, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 264, __pyx_L3_error)
         else goto __pyx_L5_argtuple_error;
       }
       if (unlikely(kw_args > 0)) {
         const Py_ssize_t kwd_pos_args = __pyx_nargs;
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "sinh") < 0)) __PYX_ERR(0, 165, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "sinh") < 0)) __PYX_ERR(0, 264, __pyx_L3_error)
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
@@ -4168,7 +4901,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("sinh", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 165, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("sinh", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 264, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -4208,28 +4941,28 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_12sinh(CYTHON_UNUSE
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("sinh", 1);
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":182
- *         Dual(real=1.1752011936438014, dual=1.5430806348152437)
- *     """
+  /* "dual_autodiff_x/autodiff_tools.pyx":291
+ * 
+ *     # If input is a Dual number, call the sinh() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.sinh()
- *     return math_sinh(x)
+ * 
  */
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 182, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 291, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 182, __pyx_L1_error)
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 291, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_2) {
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":183
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":292
+ *     # If input is a Dual number, call the sinh() method from Dual class
  *     if isinstance(x, Dual):
  *         return x.sinh()             # <<<<<<<<<<<<<<
- *     return math_sinh(x)
  * 
+ *     # If input is a numpy array, call the np.sinh method which will call the Dual class's sinh method
  */
     __Pyx_XDECREF(__pyx_r);
-    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_sinh); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 183, __pyx_L1_error)
+    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_sinh); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 292, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __pyx_t_4 = NULL;
     __pyx_t_5 = 0;
@@ -4249,7 +4982,7 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_12sinh(CYTHON_UNUSE
       PyObject *__pyx_callargs[2] = {__pyx_t_4, NULL};
       __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 183, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 292, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     }
@@ -4257,57 +4990,121 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_12sinh(CYTHON_UNUSE
     __pyx_t_1 = 0;
     goto __pyx_L0;
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":182
- *         Dual(real=1.1752011936438014, dual=1.5430806348152437)
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":291
+ * 
+ *     # If input is a Dual number, call the sinh() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.sinh()
- *     return math_sinh(x)
+ * 
  */
   }
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":184
- *     if isinstance(x, Dual):
- *         return x.sinh()
+  /* "dual_autodiff_x/autodiff_tools.pyx":295
+ * 
+ *     # If input is a numpy array, call the np.sinh method which will call the Dual class's sinh method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.sinh(x)
+ * 
+ */
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 295, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_ndarray); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 295, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_3); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 295, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__pyx_t_2) {
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":296
+ *     # If input is a numpy array, call the np.sinh method which will call the Dual class's sinh method
+ *     if isinstance(x, np.ndarray):
+ *         return np.sinh(x)             # <<<<<<<<<<<<<<
+ * 
+ *     # If input is a scalar, call the math.sinh method
+ */
+    __Pyx_XDECREF(__pyx_r);
+    __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 296, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_sinh); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 296, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_4);
+    __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+    __pyx_t_1 = NULL;
+    __pyx_t_5 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_4))) {
+      __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+      if (likely(__pyx_t_1)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+        __Pyx_INCREF(__pyx_t_1);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_4, function);
+        __pyx_t_5 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+      __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+      __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 296, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_3);
+      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+    }
+    __pyx_r = __pyx_t_3;
+    __pyx_t_3 = 0;
+    goto __pyx_L0;
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":295
+ * 
+ *     # If input is a numpy array, call the np.sinh method which will call the Dual class's sinh method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.sinh(x)
+ * 
+ */
+  }
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":299
+ * 
+ *     # If input is a scalar, call the math.sinh method
  *     return math_sinh(x)             # <<<<<<<<<<<<<<
  * 
  * 
  */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_math_sinh); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 184, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = NULL;
+  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_math_sinh); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 299, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_4);
+  __pyx_t_1 = NULL;
   __pyx_t_5 = 0;
   #if CYTHON_UNPACK_METHODS
-  if (unlikely(PyMethod_Check(__pyx_t_3))) {
-    __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_3);
-    if (likely(__pyx_t_4)) {
-      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
-      __Pyx_INCREF(__pyx_t_4);
+  if (unlikely(PyMethod_Check(__pyx_t_4))) {
+    __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+    if (likely(__pyx_t_1)) {
+      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+      __Pyx_INCREF(__pyx_t_1);
       __Pyx_INCREF(function);
-      __Pyx_DECREF_SET(__pyx_t_3, function);
+      __Pyx_DECREF_SET(__pyx_t_4, function);
       __pyx_t_5 = 1;
     }
   }
   #endif
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_x};
-    __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
-    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 184, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_1);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 299, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   }
-  __pyx_r = __pyx_t_1;
-  __pyx_t_1 = 0;
+  __pyx_r = __pyx_t_3;
+  __pyx_t_3 = 0;
   goto __pyx_L0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":165
+  /* "dual_autodiff_x/autodiff_tools.pyx":264
  * 
  * # Call Dual's sinh() method
  * def sinh(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the hyperbolic sine of a number or a Dual number.
+ *     Compute the hyperbolic sine of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
   /* function exit code */
@@ -4323,12 +5120,12 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_12sinh(CYTHON_UNUSE
   return __pyx_r;
 }
 
-/* "dual_autodiff_x/autodiff_tools.pyx":189
- * # Call Dual's cosh() method
+/* "dual_autodiff_x/autodiff_tools.pyx":303
  * 
+ * # Call Dual's cosh() method
  * def cosh(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the hyperbolic cosine of a number or a Dual number.
+ *     Compute the hyperbolic cosine of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
 /* Python wrapper */
@@ -4339,7 +5136,7 @@ PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_14cosh, "\n    Compute the hyperbolic cosine of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The hyperbolic cosine of the input.\n\n    Examples:\n        >>> from dual_autodiff import cosh, Dual\n        >>> cosh(1)\n        1.5430806348152437\n        >>> cosh(Dual(1, 1))\n        Dual(real=1.5430806348152437, dual=1.1752011936438014)\n    ");
+PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_14cosh, "\n    Compute the hyperbolic cosine of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The hyperbolic cosine of the input.\n\n    Examples:\n        >>> from dual_autodiff import cosh, Dual\n    1. With a scalar input:\n        >>> cosh(1)\n        1.5430806348152437\n    2. With a Dual number input:\n        >>> cosh(Dual(1, 1))\n        Dual(real=1.5430806348152437, dual=1.1752011936438014)\n    3. With a Dual numpy array input:\n        >>> cosh(np.array([Dual(1,1), Dual(0.5,2)]))\n        array([Dual(real=1.5430..., dual=1.1752...),\n        Dual(real=1.1276..., dual=2.5210...)],\n        dtype=object)\n    ");
 static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_15cosh = {"cosh", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_15cosh, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_14cosh};
 static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_15cosh(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
@@ -4385,12 +5182,12 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[0]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 189, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 303, __pyx_L3_error)
         else goto __pyx_L5_argtuple_error;
       }
       if (unlikely(kw_args > 0)) {
         const Py_ssize_t kwd_pos_args = __pyx_nargs;
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "cosh") < 0)) __PYX_ERR(0, 189, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "cosh") < 0)) __PYX_ERR(0, 303, __pyx_L3_error)
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
@@ -4401,7 +5198,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("cosh", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 189, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("cosh", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 303, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -4441,28 +5238,28 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_14cosh(CYTHON_UNUSE
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("cosh", 1);
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":206
- *         Dual(real=1.5430806348152437, dual=1.1752011936438014)
- *     """
+  /* "dual_autodiff_x/autodiff_tools.pyx":329
+ * 
+ *     # If input is a Dual number, call the cosh() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.cosh()
- *     return math_cosh(x)
+ * 
  */
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 206, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 329, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 206, __pyx_L1_error)
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 329, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_2) {
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":207
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":330
+ *     # If input is a Dual number, call the cosh() method from Dual class
  *     if isinstance(x, Dual):
  *         return x.cosh()             # <<<<<<<<<<<<<<
- *     return math_cosh(x)
  * 
+ *     # If input is a numpy array, call the np.cosh method which will call the Dual class's cosh method
  */
     __Pyx_XDECREF(__pyx_r);
-    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_cosh); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 207, __pyx_L1_error)
+    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_cosh); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 330, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __pyx_t_4 = NULL;
     __pyx_t_5 = 0;
@@ -4482,7 +5279,7 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_14cosh(CYTHON_UNUSE
       PyObject *__pyx_callargs[2] = {__pyx_t_4, NULL};
       __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 207, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 330, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     }
@@ -4490,57 +5287,121 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_14cosh(CYTHON_UNUSE
     __pyx_t_1 = 0;
     goto __pyx_L0;
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":206
- *         Dual(real=1.5430806348152437, dual=1.1752011936438014)
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":329
+ * 
+ *     # If input is a Dual number, call the cosh() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.cosh()
- *     return math_cosh(x)
+ * 
  */
   }
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":208
- *     if isinstance(x, Dual):
- *         return x.cosh()
+  /* "dual_autodiff_x/autodiff_tools.pyx":333
+ * 
+ *     # If input is a numpy array, call the np.cosh method which will call the Dual class's cosh method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.cosh(x)
+ * 
+ */
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 333, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_ndarray); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 333, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_3); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 333, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__pyx_t_2) {
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":334
+ *     # If input is a numpy array, call the np.cosh method which will call the Dual class's cosh method
+ *     if isinstance(x, np.ndarray):
+ *         return np.cosh(x)             # <<<<<<<<<<<<<<
+ * 
+ *     # If input is a scalar, call the math.cosh method
+ */
+    __Pyx_XDECREF(__pyx_r);
+    __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 334, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_cosh); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 334, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_4);
+    __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+    __pyx_t_1 = NULL;
+    __pyx_t_5 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_4))) {
+      __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+      if (likely(__pyx_t_1)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+        __Pyx_INCREF(__pyx_t_1);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_4, function);
+        __pyx_t_5 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+      __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+      __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 334, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_3);
+      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+    }
+    __pyx_r = __pyx_t_3;
+    __pyx_t_3 = 0;
+    goto __pyx_L0;
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":333
+ * 
+ *     # If input is a numpy array, call the np.cosh method which will call the Dual class's cosh method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.cosh(x)
+ * 
+ */
+  }
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":337
+ * 
+ *     # If input is a scalar, call the math.cosh method
  *     return math_cosh(x)             # <<<<<<<<<<<<<<
  * 
- * # Call Dual's tanh() method
+ * 
  */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_math_cosh); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 208, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = NULL;
+  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_math_cosh); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 337, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_4);
+  __pyx_t_1 = NULL;
   __pyx_t_5 = 0;
   #if CYTHON_UNPACK_METHODS
-  if (unlikely(PyMethod_Check(__pyx_t_3))) {
-    __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_3);
-    if (likely(__pyx_t_4)) {
-      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
-      __Pyx_INCREF(__pyx_t_4);
+  if (unlikely(PyMethod_Check(__pyx_t_4))) {
+    __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+    if (likely(__pyx_t_1)) {
+      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+      __Pyx_INCREF(__pyx_t_1);
       __Pyx_INCREF(function);
-      __Pyx_DECREF_SET(__pyx_t_3, function);
+      __Pyx_DECREF_SET(__pyx_t_4, function);
       __pyx_t_5 = 1;
     }
   }
   #endif
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_x};
-    __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
-    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 208, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_1);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 337, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   }
-  __pyx_r = __pyx_t_1;
-  __pyx_t_1 = 0;
+  __pyx_r = __pyx_t_3;
+  __pyx_t_3 = 0;
   goto __pyx_L0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":189
- * # Call Dual's cosh() method
+  /* "dual_autodiff_x/autodiff_tools.pyx":303
  * 
+ * # Call Dual's cosh() method
  * def cosh(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the hyperbolic cosine of a number or a Dual number.
+ *     Compute the hyperbolic cosine of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
   /* function exit code */
@@ -4556,12 +5417,12 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_14cosh(CYTHON_UNUSE
   return __pyx_r;
 }
 
-/* "dual_autodiff_x/autodiff_tools.pyx":211
+/* "dual_autodiff_x/autodiff_tools.pyx":341
  * 
  * # Call Dual's tanh() method
  * def tanh(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the hyperbolic tangent of a number or a Dual number.
+ *     Compute the hyperbolic tangent of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
 /* Python wrapper */
@@ -4572,7 +5433,7 @@ PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_16tanh, "\n    Compute the hyperbolic tangent of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The hyperbolic tangent of the input.\n\n    Examples:\n        >>> from dual_autodiff import tanh, Dual\n        >>> tanh(1)\n        0.7615941559557649\n        >>> tanh(Dual(1, 1))\n        Dual(real=0.7615941559557649, dual=0.41997434161402614)\n    ");
+PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_16tanh, "\n    Compute the hyperbolic tangent of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The hyperbolic tangent of the input.\n\n    Examples:\n        >>> from dual_autodiff import tanh, Dual\n    1. With a scalar input:\n        >>> tanh(1)\n        0.7615941559557649\n    2. With a Dual number input:\n        >>> tanh(Dual(1, 1))\n        Dual(real=0.7615941559557649, dual=0.41997434161402614)\n    3. With a Dual numpy array input:\n        >>> tanh(np.array([Dual(1,1), Dual(0.5,2)]))\n        array([Dual(real=0.7615..., dual=0.4199...),\n        Dual(real=0.4621..., dual=1.7864...)],\n        dtype=object)\n    ");
 static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_17tanh = {"tanh", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_17tanh, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_16tanh};
 static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_17tanh(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
@@ -4618,12 +5479,12 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[0]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 211, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 341, __pyx_L3_error)
         else goto __pyx_L5_argtuple_error;
       }
       if (unlikely(kw_args > 0)) {
         const Py_ssize_t kwd_pos_args = __pyx_nargs;
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "tanh") < 0)) __PYX_ERR(0, 211, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "tanh") < 0)) __PYX_ERR(0, 341, __pyx_L3_error)
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
@@ -4634,7 +5495,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("tanh", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 211, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("tanh", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 341, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -4674,28 +5535,28 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_16tanh(CYTHON_UNUSE
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("tanh", 1);
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":228
- *         Dual(real=0.7615941559557649, dual=0.41997434161402614)
- *     """
+  /* "dual_autodiff_x/autodiff_tools.pyx":367
+ * 
+ *     # If input is a Dual number, call the tanh() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.tanh()
- *     return math_tanh(x)
+ * 
  */
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 228, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 367, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 228, __pyx_L1_error)
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 367, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_2) {
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":229
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":368
+ *     # If input is a Dual number, call the tanh() method from Dual class
  *     if isinstance(x, Dual):
  *         return x.tanh()             # <<<<<<<<<<<<<<
- *     return math_tanh(x)
  * 
+ *     # If input is a numpy array, call the np.tanh method which will call the Dual class's tanh method
  */
     __Pyx_XDECREF(__pyx_r);
-    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_tanh); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 229, __pyx_L1_error)
+    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_tanh); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 368, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __pyx_t_4 = NULL;
     __pyx_t_5 = 0;
@@ -4715,7 +5576,7 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_16tanh(CYTHON_UNUSE
       PyObject *__pyx_callargs[2] = {__pyx_t_4, NULL};
       __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 229, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 368, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     }
@@ -4723,57 +5584,121 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_16tanh(CYTHON_UNUSE
     __pyx_t_1 = 0;
     goto __pyx_L0;
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":228
- *         Dual(real=0.7615941559557649, dual=0.41997434161402614)
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":367
+ * 
+ *     # If input is a Dual number, call the tanh() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.tanh()
- *     return math_tanh(x)
+ * 
  */
   }
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":230
- *     if isinstance(x, Dual):
- *         return x.tanh()
+  /* "dual_autodiff_x/autodiff_tools.pyx":371
+ * 
+ *     # If input is a numpy array, call the np.tanh method which will call the Dual class's tanh method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.tanh(x)
+ * 
+ */
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 371, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_ndarray); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 371, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_3); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 371, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__pyx_t_2) {
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":372
+ *     # If input is a numpy array, call the np.tanh method which will call the Dual class's tanh method
+ *     if isinstance(x, np.ndarray):
+ *         return np.tanh(x)             # <<<<<<<<<<<<<<
+ * 
+ *     # If input is a scalar, call the math.tanh method
+ */
+    __Pyx_XDECREF(__pyx_r);
+    __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 372, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_tanh); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 372, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_4);
+    __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+    __pyx_t_1 = NULL;
+    __pyx_t_5 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_4))) {
+      __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+      if (likely(__pyx_t_1)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+        __Pyx_INCREF(__pyx_t_1);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_4, function);
+        __pyx_t_5 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+      __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+      __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 372, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_3);
+      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+    }
+    __pyx_r = __pyx_t_3;
+    __pyx_t_3 = 0;
+    goto __pyx_L0;
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":371
+ * 
+ *     # If input is a numpy array, call the np.tanh method which will call the Dual class's tanh method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.tanh(x)
+ * 
+ */
+  }
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":375
+ * 
+ *     # If input is a scalar, call the math.tanh method
  *     return math_tanh(x)             # <<<<<<<<<<<<<<
  * 
- * # Call Dual's exp() method
+ * 
  */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_math_tanh); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 230, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = NULL;
+  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_math_tanh); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 375, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_4);
+  __pyx_t_1 = NULL;
   __pyx_t_5 = 0;
   #if CYTHON_UNPACK_METHODS
-  if (unlikely(PyMethod_Check(__pyx_t_3))) {
-    __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_3);
-    if (likely(__pyx_t_4)) {
-      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
-      __Pyx_INCREF(__pyx_t_4);
+  if (unlikely(PyMethod_Check(__pyx_t_4))) {
+    __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+    if (likely(__pyx_t_1)) {
+      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+      __Pyx_INCREF(__pyx_t_1);
       __Pyx_INCREF(function);
-      __Pyx_DECREF_SET(__pyx_t_3, function);
+      __Pyx_DECREF_SET(__pyx_t_4, function);
       __pyx_t_5 = 1;
     }
   }
   #endif
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_x};
-    __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
-    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 230, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_1);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 375, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   }
-  __pyx_r = __pyx_t_1;
-  __pyx_t_1 = 0;
+  __pyx_r = __pyx_t_3;
+  __pyx_t_3 = 0;
   goto __pyx_L0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":211
+  /* "dual_autodiff_x/autodiff_tools.pyx":341
  * 
  * # Call Dual's tanh() method
  * def tanh(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the hyperbolic tangent of a number or a Dual number.
+ *     Compute the hyperbolic tangent of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
   /* function exit code */
@@ -4789,12 +5714,12 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_16tanh(CYTHON_UNUSE
   return __pyx_r;
 }
 
-/* "dual_autodiff_x/autodiff_tools.pyx":235
+/* "dual_autodiff_x/autodiff_tools.pyx":379
  * 
- * 
+ * # Call Dual's exp() method
  * def exp(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the exponential of a number or a Dual number.
+ *     Compute the exponential of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
 /* Python wrapper */
@@ -4805,7 +5730,7 @@ PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_18exp, "\n    Compute the exponential of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The exponential of the input.\n\n    Examples:\n        >>> from dual_autodiff import exp, Dual\n        >>> exp(1)\n        2.718281828459045\n        >>> exp(Dual(1, 1))\n        Dual(real=2.718281828459045, dual=2.718281828459045)\n    ");
+PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_18exp, "\n    Compute the exponential of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The exponential of the input.\n\n    Examples:\n        >>> from dual_autodiff import exp, Dual\n    1. With a scalar input:\n        >>> exp(1)\n        2.718281828459045\n    2. With a Dual number input:\n        >>> exp(Dual(1, 1))\n        Dual(real=2.718281828459045, dual=2.718281828459045)\n    3. With a Dual numpy array input:\n        >>> exp(np.array([Dual(1,1), Dual(0.5,2)]))\n        array([Dual(real=2.7182..., dual=2.7182...),\n        Dual(real=1.6487..., dual=3.2974...)],\n        dtype=object)\n    ");
 static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_19exp = {"exp", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_19exp, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_18exp};
 static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_19exp(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
@@ -4851,12 +5776,12 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[0]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 235, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 379, __pyx_L3_error)
         else goto __pyx_L5_argtuple_error;
       }
       if (unlikely(kw_args > 0)) {
         const Py_ssize_t kwd_pos_args = __pyx_nargs;
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "exp") < 0)) __PYX_ERR(0, 235, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "exp") < 0)) __PYX_ERR(0, 379, __pyx_L3_error)
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
@@ -4867,7 +5792,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("exp", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 235, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("exp", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 379, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -4907,28 +5832,28 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_18exp(CYTHON_UNUSED
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("exp", 1);
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":252
- *         Dual(real=2.718281828459045, dual=2.718281828459045)
- *     """
+  /* "dual_autodiff_x/autodiff_tools.pyx":405
+ * 
+ *     # If input is a Dual number, call the exp() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.exp()
- *     return math_exp(x)
+ * 
  */
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 252, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 405, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 252, __pyx_L1_error)
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 405, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_2) {
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":253
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":406
+ *     # If input is a Dual number, call the exp() method from Dual class
  *     if isinstance(x, Dual):
  *         return x.exp()             # <<<<<<<<<<<<<<
- *     return math_exp(x)
  * 
+ *     # If input is a numpy array, call the np.exp method which will call the Dual class's exp method
  */
     __Pyx_XDECREF(__pyx_r);
-    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_exp); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 253, __pyx_L1_error)
+    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_exp); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 406, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __pyx_t_4 = NULL;
     __pyx_t_5 = 0;
@@ -4948,7 +5873,7 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_18exp(CYTHON_UNUSED
       PyObject *__pyx_callargs[2] = {__pyx_t_4, NULL};
       __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 253, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 406, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     }
@@ -4956,57 +5881,121 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_18exp(CYTHON_UNUSED
     __pyx_t_1 = 0;
     goto __pyx_L0;
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":252
- *         Dual(real=2.718281828459045, dual=2.718281828459045)
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":405
+ * 
+ *     # If input is a Dual number, call the exp() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.exp()
- *     return math_exp(x)
+ * 
  */
   }
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":254
- *     if isinstance(x, Dual):
- *         return x.exp()
+  /* "dual_autodiff_x/autodiff_tools.pyx":409
+ * 
+ *     # If input is a numpy array, call the np.exp method which will call the Dual class's exp method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.exp(x)
+ * 
+ */
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 409, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_ndarray); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 409, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_3); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 409, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__pyx_t_2) {
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":410
+ *     # If input is a numpy array, call the np.exp method which will call the Dual class's exp method
+ *     if isinstance(x, np.ndarray):
+ *         return np.exp(x)             # <<<<<<<<<<<<<<
+ * 
+ *     # If input is a scalar, call the math.exp method
+ */
+    __Pyx_XDECREF(__pyx_r);
+    __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 410, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_exp); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 410, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_4);
+    __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+    __pyx_t_1 = NULL;
+    __pyx_t_5 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_4))) {
+      __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+      if (likely(__pyx_t_1)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+        __Pyx_INCREF(__pyx_t_1);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_4, function);
+        __pyx_t_5 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+      __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+      __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 410, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_3);
+      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+    }
+    __pyx_r = __pyx_t_3;
+    __pyx_t_3 = 0;
+    goto __pyx_L0;
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":409
+ * 
+ *     # If input is a numpy array, call the np.exp method which will call the Dual class's exp method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.exp(x)
+ * 
+ */
+  }
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":413
+ * 
+ *     # If input is a scalar, call the math.exp method
  *     return math_exp(x)             # <<<<<<<<<<<<<<
  * 
  * # Call Dual's log() method
  */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_math_exp); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 254, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = NULL;
+  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_math_exp); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 413, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_4);
+  __pyx_t_1 = NULL;
   __pyx_t_5 = 0;
   #if CYTHON_UNPACK_METHODS
-  if (unlikely(PyMethod_Check(__pyx_t_3))) {
-    __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_3);
-    if (likely(__pyx_t_4)) {
-      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
-      __Pyx_INCREF(__pyx_t_4);
+  if (unlikely(PyMethod_Check(__pyx_t_4))) {
+    __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+    if (likely(__pyx_t_1)) {
+      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+      __Pyx_INCREF(__pyx_t_1);
       __Pyx_INCREF(function);
-      __Pyx_DECREF_SET(__pyx_t_3, function);
+      __Pyx_DECREF_SET(__pyx_t_4, function);
       __pyx_t_5 = 1;
     }
   }
   #endif
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_x};
-    __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
-    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 254, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_1);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 413, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   }
-  __pyx_r = __pyx_t_1;
-  __pyx_t_1 = 0;
+  __pyx_r = __pyx_t_3;
+  __pyx_t_3 = 0;
   goto __pyx_L0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":235
+  /* "dual_autodiff_x/autodiff_tools.pyx":379
  * 
- * 
+ * # Call Dual's exp() method
  * def exp(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the exponential of a number or a Dual number.
+ *     Compute the exponential of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
   /* function exit code */
@@ -5022,12 +6011,12 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_18exp(CYTHON_UNUSED
   return __pyx_r;
 }
 
-/* "dual_autodiff_x/autodiff_tools.pyx":257
- * 
+/* "dual_autodiff_x/autodiff_tools.pyx":417
  * # Call Dual's log() method
+ * # Errors thrown by Dual class (dual.py) automatically
  * def log(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the natural logarithm of a number or a Dual number.
+ *     Compute the natural logarithm of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
 /* Python wrapper */
@@ -5038,7 +6027,7 @@ PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_20log, "\n    Compute the natural logarithm of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The natural logarithm of the input.\n\n    Raises:\n        ValueError: If the real part of dual number is non-positive\n\n    Examples:\n        >>> from dual_autodiff import log, Dual\n        >>> log(2)\n        0.6931471805599453\n        >>> log(Dual(2, 1))\n        Dual(real=0.6931471805599453, dual=0.5)\n    ");
+PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_20log, "\n    Compute the natural logarithm of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The natural logarithm of the input.\n\n    Raises:\n        ValueError: If a real part of dual number is non-positive\n\n    Examples:\n        >>> from dual_autodiff import log, Dual\n    1. With a scalar input:\n        >>> log(1)\n        0.0\n    2. With a Dual number input:\n        >>> log(Dual(1, 1))\n        Dual(real=0.0, dual=1.0)\n    3. With a Dual numpy array input:\n        >>> log(np.array([Dual(1,1), Dual(2,2)]))\n        array([Dual(real=0.0, dual=1.0),\n        Dual(real=0.6931..., dual=1.0)],\n        dtype=object)\n    ");
 static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_21log = {"log", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_21log, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_20log};
 static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_21log(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
@@ -5084,12 +6073,12 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[0]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 257, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 417, __pyx_L3_error)
         else goto __pyx_L5_argtuple_error;
       }
       if (unlikely(kw_args > 0)) {
         const Py_ssize_t kwd_pos_args = __pyx_nargs;
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "log") < 0)) __PYX_ERR(0, 257, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "log") < 0)) __PYX_ERR(0, 417, __pyx_L3_error)
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
@@ -5100,7 +6089,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("log", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 257, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("log", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 417, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -5140,28 +6129,28 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_20log(CYTHON_UNUSED
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("log", 1);
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":277
- *         Dual(real=0.6931471805599453, dual=0.5)
- *     """
+  /* "dual_autodiff_x/autodiff_tools.pyx":446
+ * 
+ *     # If input is a Dual number, call the log() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.log()
- *     return math_log(x)
+ * 
  */
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 277, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 446, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 277, __pyx_L1_error)
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 446, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_2) {
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":278
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":447
+ *     # If input is a Dual number, call the log() method from Dual class
  *     if isinstance(x, Dual):
  *         return x.log()             # <<<<<<<<<<<<<<
- *     return math_log(x)
  * 
+ *     # If input is a numpy array, call the np.log method which will call the Dual class's log method
  */
     __Pyx_XDECREF(__pyx_r);
-    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_log); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 278, __pyx_L1_error)
+    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_log); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 447, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __pyx_t_4 = NULL;
     __pyx_t_5 = 0;
@@ -5181,7 +6170,7 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_20log(CYTHON_UNUSED
       PyObject *__pyx_callargs[2] = {__pyx_t_4, NULL};
       __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 278, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 447, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     }
@@ -5189,57 +6178,121 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_20log(CYTHON_UNUSED
     __pyx_t_1 = 0;
     goto __pyx_L0;
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":277
- *         Dual(real=0.6931471805599453, dual=0.5)
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":446
+ * 
+ *     # If input is a Dual number, call the log() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.log()
- *     return math_log(x)
+ * 
  */
   }
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":279
- *     if isinstance(x, Dual):
- *         return x.log()
+  /* "dual_autodiff_x/autodiff_tools.pyx":450
+ * 
+ *     # If input is a numpy array, call the np.log method which will call the Dual class's log method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.log(x)
+ * 
+ */
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 450, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_ndarray); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 450, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_3); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 450, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__pyx_t_2) {
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":451
+ *     # If input is a numpy array, call the np.log method which will call the Dual class's log method
+ *     if isinstance(x, np.ndarray):
+ *         return np.log(x)             # <<<<<<<<<<<<<<
+ * 
+ *     # If input is a scalar, call the math.log method
+ */
+    __Pyx_XDECREF(__pyx_r);
+    __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 451, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_log); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 451, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_4);
+    __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+    __pyx_t_1 = NULL;
+    __pyx_t_5 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_4))) {
+      __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+      if (likely(__pyx_t_1)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+        __Pyx_INCREF(__pyx_t_1);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_4, function);
+        __pyx_t_5 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+      __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+      __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 451, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_3);
+      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+    }
+    __pyx_r = __pyx_t_3;
+    __pyx_t_3 = 0;
+    goto __pyx_L0;
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":450
+ * 
+ *     # If input is a numpy array, call the np.log method which will call the Dual class's log method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.log(x)
+ * 
+ */
+  }
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":454
+ * 
+ *     # If input is a scalar, call the math.log method
  *     return math_log(x)             # <<<<<<<<<<<<<<
  * 
- * # Call Dual's sqrt() method
+ * 
  */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_math_log); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 279, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = NULL;
+  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_math_log); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 454, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_4);
+  __pyx_t_1 = NULL;
   __pyx_t_5 = 0;
   #if CYTHON_UNPACK_METHODS
-  if (unlikely(PyMethod_Check(__pyx_t_3))) {
-    __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_3);
-    if (likely(__pyx_t_4)) {
-      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
-      __Pyx_INCREF(__pyx_t_4);
+  if (unlikely(PyMethod_Check(__pyx_t_4))) {
+    __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+    if (likely(__pyx_t_1)) {
+      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+      __Pyx_INCREF(__pyx_t_1);
       __Pyx_INCREF(function);
-      __Pyx_DECREF_SET(__pyx_t_3, function);
+      __Pyx_DECREF_SET(__pyx_t_4, function);
       __pyx_t_5 = 1;
     }
   }
   #endif
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_x};
-    __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
-    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 279, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_1);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 454, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   }
-  __pyx_r = __pyx_t_1;
-  __pyx_t_1 = 0;
+  __pyx_r = __pyx_t_3;
+  __pyx_t_3 = 0;
   goto __pyx_L0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":257
- * 
+  /* "dual_autodiff_x/autodiff_tools.pyx":417
  * # Call Dual's log() method
+ * # Errors thrown by Dual class (dual.py) automatically
  * def log(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the natural logarithm of a number or a Dual number.
+ *     Compute the natural logarithm of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
   /* function exit code */
@@ -5255,12 +6308,12 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_20log(CYTHON_UNUSED
   return __pyx_r;
 }
 
-/* "dual_autodiff_x/autodiff_tools.pyx":283
+/* "dual_autodiff_x/autodiff_tools.pyx":459
  * # Call Dual's sqrt() method
- * 
+ * # Errors thrown by Dual class (dual.py) automatically
  * def sqrt(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the square root of a number or a Dual number.
+ *     Compute the square root of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
 /* Python wrapper */
@@ -5271,7 +6324,7 @@ PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_22sqrt, "\n    Compute the square root of a number or a Dual number.\n\n    Parameters:\n        x (float or Dual): The input value.\n\n    Returns:\n        float or Dual: The square root of the input.\n\n    Raises:\n        ValueError: If the real part of dual number is negative.\n\n    Examples:\n        >>> from dual_autodiff import sqrt, Dual\n        >>> sqrt(4)\n        2.0\n        >>> sqrt(Dual(4, 1))\n        Dual(real=2.0, dual=0.25)\n    ");
+PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_22sqrt, "\n    Compute the square root of a number, a Dual number, or a numpy array of Dual numbers.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The input value/values.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The square root of the input.\n\n    Raises:\n        ValueError: If the real part of dual number is negative.\n\n    Examples:\n        >>> from dual_autodiff import sqrt, Dual\n    1. With a scalar input:\n        >>> sqrt(4)\n        2.0\n    2. With a Dual number input:\n        >>> sqrt(Dual(4, 1))\n        Dual(real=2.0, dual=0.25)\n    3. With a Dual numpy array input:\n        >>> sqrt(np.array([Dual(4,1), Dual(9,2)]))\n        array([Dual(real=2.0, dual=0.25),\n        Dual(real=3.0, dual=0.3333...)],\n        dtype=object)\n    ");
 static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_23sqrt = {"sqrt", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_23sqrt, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_22sqrt};
 static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_23sqrt(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
@@ -5317,12 +6370,12 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[0]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 283, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 459, __pyx_L3_error)
         else goto __pyx_L5_argtuple_error;
       }
       if (unlikely(kw_args > 0)) {
         const Py_ssize_t kwd_pos_args = __pyx_nargs;
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "sqrt") < 0)) __PYX_ERR(0, 283, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "sqrt") < 0)) __PYX_ERR(0, 459, __pyx_L3_error)
       }
     } else if (unlikely(__pyx_nargs != 1)) {
       goto __pyx_L5_argtuple_error;
@@ -5333,7 +6386,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("sqrt", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 283, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("sqrt", 1, 1, 1, __pyx_nargs); __PYX_ERR(0, 459, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -5373,28 +6426,28 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_22sqrt(CYTHON_UNUSE
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("sqrt", 1);
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":303
- *         Dual(real=2.0, dual=0.25)
- *     """
+  /* "dual_autodiff_x/autodiff_tools.pyx":488
+ * 
+ *     # If input is a Dual number, call the sqrt() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.sqrt()
- *     return math_sqrt(x)
+ * 
  */
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 303, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 488, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 303, __pyx_L1_error)
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 488, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_2) {
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":304
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":489
+ *     # If input is a Dual number, call the sqrt() method from Dual class
  *     if isinstance(x, Dual):
  *         return x.sqrt()             # <<<<<<<<<<<<<<
- *     return math_sqrt(x)
  * 
+ *     # If input is a numpy array, call the np.sqrt method which will call the Dual class's sqrt method
  */
     __Pyx_XDECREF(__pyx_r);
-    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_sqrt); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 304, __pyx_L1_error)
+    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_sqrt); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 489, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __pyx_t_4 = NULL;
     __pyx_t_5 = 0;
@@ -5414,7 +6467,7 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_22sqrt(CYTHON_UNUSE
       PyObject *__pyx_callargs[2] = {__pyx_t_4, NULL};
       __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 304, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 489, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     }
@@ -5422,57 +6475,121 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_22sqrt(CYTHON_UNUSE
     __pyx_t_1 = 0;
     goto __pyx_L0;
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":303
- *         Dual(real=2.0, dual=0.25)
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":488
+ * 
+ *     # If input is a Dual number, call the sqrt() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.sqrt()
- *     return math_sqrt(x)
+ * 
  */
   }
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":305
- *     if isinstance(x, Dual):
- *         return x.sqrt()
+  /* "dual_autodiff_x/autodiff_tools.pyx":492
+ * 
+ *     # If input is a numpy array, call the np.sqrt method which will call the Dual class's sqrt method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.sqrt(x)
+ * 
+ */
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 492, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_ndarray); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 492, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_3); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 492, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__pyx_t_2) {
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":493
+ *     # If input is a numpy array, call the np.sqrt method which will call the Dual class's sqrt method
+ *     if isinstance(x, np.ndarray):
+ *         return np.sqrt(x)             # <<<<<<<<<<<<<<
+ * 
+ *     # If input is a scalar, call the math.sqrt method
+ */
+    __Pyx_XDECREF(__pyx_r);
+    __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 493, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_sqrt); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 493, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_4);
+    __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+    __pyx_t_1 = NULL;
+    __pyx_t_5 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_4))) {
+      __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+      if (likely(__pyx_t_1)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+        __Pyx_INCREF(__pyx_t_1);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_4, function);
+        __pyx_t_5 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+      __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+      __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 493, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_3);
+      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+    }
+    __pyx_r = __pyx_t_3;
+    __pyx_t_3 = 0;
+    goto __pyx_L0;
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":492
+ * 
+ *     # If input is a numpy array, call the np.sqrt method which will call the Dual class's sqrt method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.sqrt(x)
+ * 
+ */
+  }
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":496
+ * 
+ *     # If input is a scalar, call the math.sqrt method
  *     return math_sqrt(x)             # <<<<<<<<<<<<<<
  * 
- * # Call Dual's pow() method
+ * 
  */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_math_sqrt); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 305, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = NULL;
+  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_math_sqrt); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 496, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_4);
+  __pyx_t_1 = NULL;
   __pyx_t_5 = 0;
   #if CYTHON_UNPACK_METHODS
-  if (unlikely(PyMethod_Check(__pyx_t_3))) {
-    __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_3);
-    if (likely(__pyx_t_4)) {
-      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
-      __Pyx_INCREF(__pyx_t_4);
+  if (unlikely(PyMethod_Check(__pyx_t_4))) {
+    __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+    if (likely(__pyx_t_1)) {
+      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+      __Pyx_INCREF(__pyx_t_1);
       __Pyx_INCREF(function);
-      __Pyx_DECREF_SET(__pyx_t_3, function);
+      __Pyx_DECREF_SET(__pyx_t_4, function);
       __pyx_t_5 = 1;
     }
   }
   #endif
   {
-    PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_x};
-    __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
-    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 305, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_1);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    PyObject *__pyx_callargs[2] = {__pyx_t_1, __pyx_v_x};
+    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 496, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   }
-  __pyx_r = __pyx_t_1;
-  __pyx_t_1 = 0;
+  __pyx_r = __pyx_t_3;
+  __pyx_t_3 = 0;
   goto __pyx_L0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":283
+  /* "dual_autodiff_x/autodiff_tools.pyx":459
  * # Call Dual's sqrt() method
- * 
+ * # Errors thrown by Dual class (dual.py) automatically
  * def sqrt(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the square root of a number or a Dual number.
+ *     Compute the square root of a number, a Dual number, or a numpy array of Dual numbers.
  */
 
   /* function exit code */
@@ -5488,12 +6605,12 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_22sqrt(CYTHON_UNUSE
   return __pyx_r;
 }
 
-/* "dual_autodiff_x/autodiff_tools.pyx":308
- * 
+/* "dual_autodiff_x/autodiff_tools.pyx":501
  * # Call Dual's pow() method
+ * # Errors thrown by Dual class (dual.py) automatically
  * def pow(x, n):             # <<<<<<<<<<<<<<
  *     """
- *     Compute a number or a Dual number raised to a power.
+ *     Compute a number, a Dual number, or a numpy array of Dual numbers raised to a power.
  */
 
 /* Python wrapper */
@@ -5504,7 +6621,7 @@ PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_24pow, "\n    Compute a number or a Dual number raised to a power.\n\n    Parameters:\n        x (float or Dual): The base.\n        n (float): The exponent.\n\n    Returns:\n        float or Dual: The result of raising `x` to the power `n`.\n\n    Raises:\n        TypeError: If n is not an int or float.\n\n    Examples:\n        >>> from dual_autodiff import pow, Dual\n        >>> pow(2, 3)\n        8\n        >>> pow(Dual(2, 1), 3)\n        Dual(real=8, dual=12.0)\n    ");
+PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_24pow, "\n    Compute a number, a Dual number, or a numpy array of Dual numbers raised to a power.\n\n    Parameters:\n        x (float, Dual, or numpy.ndarray): The base.\n        n (float): The exponent.\n\n    Returns:\n        float, Dual, or numpy.ndarray: The result of raising `x` to the power `n`.\n\n    Raises:\n        TypeError: If n is not an int or float.\n\n    Examples:\n        >>> from dual_autodiff import pow, Dual\n    1. With a scalar input:\n        >>> pow(2, 3)\n        8\n    2. With a Dual number input:\n        >>> pow(Dual(2, 1), 3)\n        Dual(real=8, dual=12.0)\n    3. With a Dual numpy array input:\n        >>> pow(np.array([Dual(2,1), Dual(3,2)]), 3)\n        array([Dual(real=8, dual=12.0),\n        Dual(real=27, dual=54.0)],\n        dtype=object)\n    ");
 static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_25pow = {"pow", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_25pow, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_24pow};
 static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_25pow(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
@@ -5553,7 +6670,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[0]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 308, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 501, __pyx_L3_error)
         else goto __pyx_L5_argtuple_error;
         CYTHON_FALLTHROUGH;
         case  1:
@@ -5561,14 +6678,14 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[1]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 308, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 501, __pyx_L3_error)
         else {
-          __Pyx_RaiseArgtupleInvalid("pow", 1, 2, 2, 1); __PYX_ERR(0, 308, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("pow", 1, 2, 2, 1); __PYX_ERR(0, 501, __pyx_L3_error)
         }
       }
       if (unlikely(kw_args > 0)) {
         const Py_ssize_t kwd_pos_args = __pyx_nargs;
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "pow") < 0)) __PYX_ERR(0, 308, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "pow") < 0)) __PYX_ERR(0, 501, __pyx_L3_error)
       }
     } else if (unlikely(__pyx_nargs != 2)) {
       goto __pyx_L5_argtuple_error;
@@ -5581,7 +6698,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("pow", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 308, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("pow", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 501, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -5621,28 +6738,28 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_24pow(CYTHON_UNUSED
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("pow", 1);
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":329
- *         Dual(real=8, dual=12.0)
- *     """
+  /* "dual_autodiff_x/autodiff_tools.pyx":531
+ * 
+ *     # If input is a Dual number, call the pow() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.pow(n)
- *     return math_pow(x, n)
+ * 
  */
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 329, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_Dual); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 531, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 329, __pyx_L1_error)
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_1); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 531, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_2) {
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":330
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":532
+ *     # If input is a Dual number, call the pow() method from Dual class
  *     if isinstance(x, Dual):
  *         return x.pow(n)             # <<<<<<<<<<<<<<
- *     return math_pow(x, n)
  * 
+ *     # If input is a numpy array, call the np.power method which will call the Dual class's pow method
  */
     __Pyx_XDECREF(__pyx_r);
-    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_pow); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 330, __pyx_L1_error)
+    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_pow); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 532, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __pyx_t_4 = NULL;
     __pyx_t_5 = 0;
@@ -5662,7 +6779,7 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_24pow(CYTHON_UNUSED
       PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_v_n};
       __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 330, __pyx_L1_error)
+      if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 532, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     }
@@ -5670,57 +6787,121 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_24pow(CYTHON_UNUSED
     __pyx_t_1 = 0;
     goto __pyx_L0;
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":329
- *         Dual(real=8, dual=12.0)
- *     """
+    /* "dual_autodiff_x/autodiff_tools.pyx":531
+ * 
+ *     # If input is a Dual number, call the pow() method from Dual class
  *     if isinstance(x, Dual):             # <<<<<<<<<<<<<<
  *         return x.pow(n)
- *     return math_pow(x, n)
+ * 
  */
   }
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":331
- *     if isinstance(x, Dual):
- *         return x.pow(n)
+  /* "dual_autodiff_x/autodiff_tools.pyx":535
+ * 
+ *     # If input is a numpy array, call the np.power method which will call the Dual class's pow method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.power(x, n)
+ * 
+ */
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 535, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_ndarray); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 535, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_t_2 = PyObject_IsInstance(__pyx_v_x, __pyx_t_3); if (unlikely(__pyx_t_2 == ((int)-1))) __PYX_ERR(0, 535, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (__pyx_t_2) {
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":536
+ *     # If input is a numpy array, call the np.power method which will call the Dual class's pow method
+ *     if isinstance(x, np.ndarray):
+ *         return np.power(x, n)             # <<<<<<<<<<<<<<
+ * 
+ *     # If input is a scalar, call the math.pow method
+ */
+    __Pyx_XDECREF(__pyx_r);
+    __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_np); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 536, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_power); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 536, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_4);
+    __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+    __pyx_t_1 = NULL;
+    __pyx_t_5 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_4))) {
+      __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+      if (likely(__pyx_t_1)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+        __Pyx_INCREF(__pyx_t_1);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_4, function);
+        __pyx_t_5 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[3] = {__pyx_t_1, __pyx_v_x, __pyx_v_n};
+      __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 2+__pyx_t_5);
+      __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 536, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_3);
+      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+    }
+    __pyx_r = __pyx_t_3;
+    __pyx_t_3 = 0;
+    goto __pyx_L0;
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":535
+ * 
+ *     # If input is a numpy array, call the np.power method which will call the Dual class's pow method
+ *     if isinstance(x, np.ndarray):             # <<<<<<<<<<<<<<
+ *         return np.power(x, n)
+ * 
+ */
+  }
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":539
+ * 
+ *     # If input is a scalar, call the math.pow method
  *     return math_pow(x, n)             # <<<<<<<<<<<<<<
  * 
- * # Evaluates a function on a dual number and returns the dual part of result
+ * 
  */
   __Pyx_XDECREF(__pyx_r);
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_math_pow); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 331, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_4 = NULL;
+  __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_math_pow); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 539, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_4);
+  __pyx_t_1 = NULL;
   __pyx_t_5 = 0;
   #if CYTHON_UNPACK_METHODS
-  if (unlikely(PyMethod_Check(__pyx_t_3))) {
-    __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_3);
-    if (likely(__pyx_t_4)) {
-      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
-      __Pyx_INCREF(__pyx_t_4);
+  if (unlikely(PyMethod_Check(__pyx_t_4))) {
+    __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_4);
+    if (likely(__pyx_t_1)) {
+      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_4);
+      __Pyx_INCREF(__pyx_t_1);
       __Pyx_INCREF(function);
-      __Pyx_DECREF_SET(__pyx_t_3, function);
+      __Pyx_DECREF_SET(__pyx_t_4, function);
       __pyx_t_5 = 1;
     }
   }
   #endif
   {
-    PyObject *__pyx_callargs[3] = {__pyx_t_4, __pyx_v_x, __pyx_v_n};
-    __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_5, 2+__pyx_t_5);
-    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 331, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_1);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    PyObject *__pyx_callargs[3] = {__pyx_t_1, __pyx_v_x, __pyx_v_n};
+    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 2+__pyx_t_5);
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 539, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   }
-  __pyx_r = __pyx_t_1;
-  __pyx_t_1 = 0;
+  __pyx_r = __pyx_t_3;
+  __pyx_t_3 = 0;
   goto __pyx_L0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":308
- * 
+  /* "dual_autodiff_x/autodiff_tools.pyx":501
  * # Call Dual's pow() method
+ * # Errors thrown by Dual class (dual.py) automatically
  * def pow(x, n):             # <<<<<<<<<<<<<<
  *     """
- *     Compute a number or a Dual number raised to a power.
+ *     Compute a number, a Dual number, or a numpy array of Dual numbers raised to a power.
  */
 
   /* function exit code */
@@ -5736,9 +6917,9 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_24pow(CYTHON_UNUSED
   return __pyx_r;
 }
 
-/* "dual_autodiff_x/autodiff_tools.pyx":335
+/* "dual_autodiff_x/autodiff_tools.pyx":544
  * # Evaluates a function on a dual number and returns the dual part of result
- * # Corrosponds to derivative - ie preforms automatic differentiation
+ * # Corresponds to derivative - ie performs automatic differentiation
  * def auto_diff(func, x):             # <<<<<<<<<<<<<<
  *     """
  *     Evaluates the derivative of a function f at x using Dual number: x + .
@@ -5752,7 +6933,7 @@ PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_26auto_diff, "\n    Evaluates the derivative of a function f at x using Dual number: x + \316\265.\n\n    Parameters:\n        func (callable): The function to differentiate.\n        x (float): The point where the derivative is evaluated.\n\n    Returns:\n        float: The derivative of `f` at `x`.\n\n    Raises:\n        TypeError: If f is not callable\n        TypeError: If input x a float, or int.\n\n    Examples:\n        >>> from dual_autodiff import auto_diff\n        >>> auto_diff(lambda x: x**2 + x, 2)\n        5.0\n    ");
+PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_26auto_diff, "\n    Evaluates the derivative of a function f at x using Dual number: x + \316\265.\n\n    Parameters:\n        func (callable): The function to differentiate.\n        x (float, int, or numpy.ndarray): The point(s) where the derivative is evaluated.\n\n    Returns:\n        tuple: A tuple containing the real and dual parts of the result.\n               If x is a scalar, returns (real, dual).\n               If x is a numpy array, returns two numpy arrays (real_array, dual_array).\n\n    Raises:\n        TypeError: If func is not callable.\n        TypeError: If input x is not a float, int, or numpy.ndarray containing scalar values.\n\n    Examples:\n        >>> from dual_autodiff import auto_diff\n    1. With a scalar input:\n        >>> auto_diff(lambda x: x**3 + 2*x**2 + x, 2)\n        (14.0, 17.0)\n    2. With a numpy array input:\n        >>> auto_diff(lambda x: x**3 + 2*x**2 + x, np.array([1, 2, 3]))\n        (array([ 4.0, 14.0, 34.0]), array([ 4.0, 17.0, 40.0]))\n    ");
 static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_27auto_diff = {"auto_diff", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_27auto_diff, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_26auto_diff};
 static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_27auto_diff(PyObject *__pyx_self, 
 #if CYTHON_METH_FASTCALL
@@ -5801,7 +6982,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[0]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 335, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 544, __pyx_L3_error)
         else goto __pyx_L5_argtuple_error;
         CYTHON_FALLTHROUGH;
         case  1:
@@ -5809,14 +6990,14 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[1]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 335, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 544, __pyx_L3_error)
         else {
-          __Pyx_RaiseArgtupleInvalid("auto_diff", 1, 2, 2, 1); __PYX_ERR(0, 335, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("auto_diff", 1, 2, 2, 1); __PYX_ERR(0, 544, __pyx_L3_error)
         }
       }
       if (unlikely(kw_args > 0)) {
         const Py_ssize_t kwd_pos_args = __pyx_nargs;
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "auto_diff") < 0)) __PYX_ERR(0, 335, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "auto_diff") < 0)) __PYX_ERR(0, 544, __pyx_L3_error)
       }
     } else if (unlikely(__pyx_nargs != 2)) {
       goto __pyx_L5_argtuple_error;
@@ -5829,7 +7010,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("auto_diff", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 335, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("auto_diff", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 544, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -5858,6 +7039,10 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
 
 static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_26auto_diff(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_func, PyObject *__pyx_v_x) {
   PyObject *__pyx_v_value = NULL;
+  PyObject *__pyx_v_real_parts = NULL;
+  PyObject *__pyx_v_dual_parts = NULL;
+  PyObject *__pyx_7genexpr__pyx_v_xi = NULL;
+  PyObject *__pyx_8genexpr1__pyx_v_xi = NULL;
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   int __pyx_t_1;
@@ -5869,40 +7054,45 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_26auto_diff(CYTHON_
   PyObject *__pyx_t_7 = NULL;
   PyObject *__pyx_t_8 = NULL;
   unsigned int __pyx_t_9;
+  PyObject *__pyx_t_10 = NULL;
+  PyObject *(*__pyx_t_11)(PyObject *);
+  PyObject *__pyx_t_12 = NULL;
+  PyObject *__pyx_t_13 = NULL;
+  PyObject *__pyx_t_14 = NULL;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("auto_diff", 1);
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":356
+  /* "dual_autodiff_x/autodiff_tools.pyx":571
  *     """
- *     # Validate that f is callable function
+ *     # Check that func is callable
  *     if not callable(func):             # <<<<<<<<<<<<<<
- *         raise TypeError(f"function must be a callable function, got {type(func).__name__}.")
+ *         raise TypeError(f"func must be a callable function, got {type(func).__name__}.")
  * 
  */
-  __pyx_t_1 = __Pyx_PyCallable_Check(__pyx_v_func); if (unlikely(__pyx_t_1 == ((int)-1))) __PYX_ERR(0, 356, __pyx_L1_error)
+  __pyx_t_1 = __Pyx_PyCallable_Check(__pyx_v_func); if (unlikely(__pyx_t_1 == ((int)-1))) __PYX_ERR(0, 571, __pyx_L1_error)
   __pyx_t_2 = (!__pyx_t_1);
   if (unlikely(__pyx_t_2)) {
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":357
- *     # Validate that f is callable function
+    /* "dual_autodiff_x/autodiff_tools.pyx":572
+ *     # Check that func is callable
  *     if not callable(func):
- *         raise TypeError(f"function must be a callable function, got {type(func).__name__}.")             # <<<<<<<<<<<<<<
+ *         raise TypeError(f"func must be a callable function, got {type(func).__name__}.")             # <<<<<<<<<<<<<<
  * 
- *     # Validate that input x is a or scalar (float/ int)
+ *     # Check that input x is a scalar (float/int) or numpy array
  */
-    __pyx_t_3 = PyTuple_New(3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 357, __pyx_L1_error)
+    __pyx_t_3 = PyTuple_New(3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 572, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __pyx_t_4 = 0;
     __pyx_t_5 = 127;
-    __Pyx_INCREF(__pyx_kp_u_function_must_be_a_callable_func);
-    __pyx_t_4 += 42;
-    __Pyx_GIVEREF(__pyx_kp_u_function_must_be_a_callable_func);
-    PyTuple_SET_ITEM(__pyx_t_3, 0, __pyx_kp_u_function_must_be_a_callable_func);
-    __pyx_t_6 = __Pyx_PyObject_GetAttrStr(((PyObject *)Py_TYPE(__pyx_v_func)), __pyx_n_s_name); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 357, __pyx_L1_error)
+    __Pyx_INCREF(__pyx_kp_u_func_must_be_a_callable_function);
+    __pyx_t_4 += 38;
+    __Pyx_GIVEREF(__pyx_kp_u_func_must_be_a_callable_function);
+    PyTuple_SET_ITEM(__pyx_t_3, 0, __pyx_kp_u_func_must_be_a_callable_function);
+    __pyx_t_6 = __Pyx_PyObject_GetAttrStr(((PyObject *)Py_TYPE(__pyx_v_func)), __pyx_n_s_name); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 572, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_6);
-    __pyx_t_7 = __Pyx_PyObject_FormatSimple(__pyx_t_6, __pyx_empty_unicode); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 357, __pyx_L1_error)
+    __pyx_t_7 = __Pyx_PyObject_FormatSimple(__pyx_t_6, __pyx_empty_unicode); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 572, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_7);
     __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
     __pyx_t_5 = (__Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_7) > __pyx_t_5) ? __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_7) : __pyx_t_5;
@@ -5914,40 +7104,37 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_26auto_diff(CYTHON_
     __pyx_t_4 += 1;
     __Pyx_GIVEREF(__pyx_kp_u_);
     PyTuple_SET_ITEM(__pyx_t_3, 2, __pyx_kp_u_);
-    __pyx_t_7 = __Pyx_PyUnicode_Join(__pyx_t_3, 3, __pyx_t_4, __pyx_t_5); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 357, __pyx_L1_error)
+    __pyx_t_7 = __Pyx_PyUnicode_Join(__pyx_t_3, 3, __pyx_t_4, __pyx_t_5); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 572, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_7);
     __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-    __pyx_t_3 = __Pyx_PyObject_CallOneArg(__pyx_builtin_TypeError, __pyx_t_7); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 357, __pyx_L1_error)
+    __pyx_t_3 = __Pyx_PyObject_CallOneArg(__pyx_builtin_TypeError, __pyx_t_7); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 572, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
     __Pyx_Raise(__pyx_t_3, 0, 0, 0);
     __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-    __PYX_ERR(0, 357, __pyx_L1_error)
+    __PYX_ERR(0, 572, __pyx_L1_error)
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":356
+    /* "dual_autodiff_x/autodiff_tools.pyx":571
  *     """
- *     # Validate that f is callable function
+ *     # Check that func is callable
  *     if not callable(func):             # <<<<<<<<<<<<<<
- *         raise TypeError(f"function must be a callable function, got {type(func).__name__}.")
+ *         raise TypeError(f"func must be a callable function, got {type(func).__name__}.")
  * 
  */
   }
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":360
+  /* "dual_autodiff_x/autodiff_tools.pyx":575
  * 
- *     # Validate that input x is a or scalar (float/ int)
- *     if not isinstance(x, (Dual, float, int)):             # <<<<<<<<<<<<<<
- *         raise TypeError(f"x must be a scalar number (float/int), got {type(x).__name__}.")
+ *     # Check that input x is a scalar (float/int) or numpy array
+ *     if not isinstance(x, (float, int, np.ndarray)):             # <<<<<<<<<<<<<<
+ *         raise TypeError(f"x must be a scalar number (float/int) or numpy.ndarray, got {type(x).__name__}.")
  * 
  */
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_Dual); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 360, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_np); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 575, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_1 = PyObject_IsInstance(__pyx_v_x, __pyx_t_3); 
-  if (!__pyx_t_1) {
-  } else {
-    __pyx_t_2 = __pyx_t_1;
-    goto __pyx_L5_bool_binop_done;
-  }
+  __pyx_t_7 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_ndarray); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 575, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_7);
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __pyx_t_1 = PyFloat_Check(__pyx_v_x); 
   if (!__pyx_t_1) {
   } else {
@@ -5955,190 +7142,824 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_26auto_diff(CYTHON_
     goto __pyx_L5_bool_binop_done;
   }
   __pyx_t_1 = PyInt_Check(__pyx_v_x); 
+  if (!__pyx_t_1) {
+  } else {
+    __pyx_t_2 = __pyx_t_1;
+    goto __pyx_L5_bool_binop_done;
+  }
+  __pyx_t_1 = PyObject_IsInstance(__pyx_v_x, __pyx_t_7); 
   __pyx_t_2 = __pyx_t_1;
   __pyx_L5_bool_binop_done:;
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
   __pyx_t_1 = (!__pyx_t_2);
   if (unlikely(__pyx_t_1)) {
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":361
- *     # Validate that input x is a or scalar (float/ int)
- *     if not isinstance(x, (Dual, float, int)):
- *         raise TypeError(f"x must be a scalar number (float/int), got {type(x).__name__}.")             # <<<<<<<<<<<<<<
+    /* "dual_autodiff_x/autodiff_tools.pyx":576
+ *     # Check that input x is a scalar (float/int) or numpy array
+ *     if not isinstance(x, (float, int, np.ndarray)):
+ *         raise TypeError(f"x must be a scalar number (float/int) or numpy.ndarray, got {type(x).__name__}.")             # <<<<<<<<<<<<<<
  * 
- *     value = func(Dual(x, 1))
+ *     if isinstance(x, (float, int)):
  */
-    __pyx_t_3 = PyTuple_New(3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 361, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_3);
+    __pyx_t_7 = PyTuple_New(3); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 576, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_7);
     __pyx_t_4 = 0;
     __pyx_t_5 = 127;
     __Pyx_INCREF(__pyx_kp_u_x_must_be_a_scalar_number_float);
-    __pyx_t_4 += 43;
+    __pyx_t_4 += 60;
     __Pyx_GIVEREF(__pyx_kp_u_x_must_be_a_scalar_number_float);
-    PyTuple_SET_ITEM(__pyx_t_3, 0, __pyx_kp_u_x_must_be_a_scalar_number_float);
-    __pyx_t_7 = __Pyx_PyObject_GetAttrStr(((PyObject *)Py_TYPE(__pyx_v_x)), __pyx_n_s_name); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 361, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_7);
-    __pyx_t_6 = __Pyx_PyObject_FormatSimple(__pyx_t_7, __pyx_empty_unicode); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 361, __pyx_L1_error)
+    PyTuple_SET_ITEM(__pyx_t_7, 0, __pyx_kp_u_x_must_be_a_scalar_number_float);
+    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(((PyObject *)Py_TYPE(__pyx_v_x)), __pyx_n_s_name); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 576, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __pyx_t_6 = __Pyx_PyObject_FormatSimple(__pyx_t_3, __pyx_empty_unicode); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 576, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_6);
-    __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     __pyx_t_5 = (__Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_6) > __pyx_t_5) ? __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_6) : __pyx_t_5;
     __pyx_t_4 += __Pyx_PyUnicode_GET_LENGTH(__pyx_t_6);
     __Pyx_GIVEREF(__pyx_t_6);
-    PyTuple_SET_ITEM(__pyx_t_3, 1, __pyx_t_6);
+    PyTuple_SET_ITEM(__pyx_t_7, 1, __pyx_t_6);
     __pyx_t_6 = 0;
     __Pyx_INCREF(__pyx_kp_u_);
     __pyx_t_4 += 1;
     __Pyx_GIVEREF(__pyx_kp_u_);
-    PyTuple_SET_ITEM(__pyx_t_3, 2, __pyx_kp_u_);
-    __pyx_t_6 = __Pyx_PyUnicode_Join(__pyx_t_3, 3, __pyx_t_4, __pyx_t_5); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 361, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_6);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-    __pyx_t_3 = __Pyx_PyObject_CallOneArg(__pyx_builtin_TypeError, __pyx_t_6); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 361, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_3);
-    __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-    __Pyx_Raise(__pyx_t_3, 0, 0, 0);
-    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-    __PYX_ERR(0, 361, __pyx_L1_error)
-
-    /* "dual_autodiff_x/autodiff_tools.pyx":360
- * 
- *     # Validate that input x is a or scalar (float/ int)
- *     if not isinstance(x, (Dual, float, int)):             # <<<<<<<<<<<<<<
- *         raise TypeError(f"x must be a scalar number (float/int), got {type(x).__name__}.")
- * 
- */
-  }
-
-  /* "dual_autodiff_x/autodiff_tools.pyx":363
- *         raise TypeError(f"x must be a scalar number (float/int), got {type(x).__name__}.")
- * 
- *     value = func(Dual(x, 1))             # <<<<<<<<<<<<<<
- * 
- *     # This accounts for the case in which the function is constant and therefore resturns a constant non dual number
- */
-  __Pyx_GetModuleGlobalName(__pyx_t_7, __pyx_n_s_Dual); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 363, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_7);
-  __pyx_t_8 = NULL;
-  __pyx_t_9 = 0;
-  #if CYTHON_UNPACK_METHODS
-  if (unlikely(PyMethod_Check(__pyx_t_7))) {
-    __pyx_t_8 = PyMethod_GET_SELF(__pyx_t_7);
-    if (likely(__pyx_t_8)) {
-      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_7);
-      __Pyx_INCREF(__pyx_t_8);
-      __Pyx_INCREF(function);
-      __Pyx_DECREF_SET(__pyx_t_7, function);
-      __pyx_t_9 = 1;
-    }
-  }
-  #endif
-  {
-    PyObject *__pyx_callargs[3] = {__pyx_t_8, __pyx_v_x, __pyx_int_1};
-    __pyx_t_6 = __Pyx_PyObject_FastCall(__pyx_t_7, __pyx_callargs+1-__pyx_t_9, 2+__pyx_t_9);
-    __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
-    if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 363, __pyx_L1_error)
+    PyTuple_SET_ITEM(__pyx_t_7, 2, __pyx_kp_u_);
+    __pyx_t_6 = __Pyx_PyUnicode_Join(__pyx_t_7, 3, __pyx_t_4, __pyx_t_5); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 576, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_6);
     __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
-  }
-  __Pyx_INCREF(__pyx_v_func);
-  __pyx_t_7 = __pyx_v_func; __pyx_t_8 = NULL;
-  __pyx_t_9 = 0;
-  #if CYTHON_UNPACK_METHODS
-  if (unlikely(PyMethod_Check(__pyx_t_7))) {
-    __pyx_t_8 = PyMethod_GET_SELF(__pyx_t_7);
-    if (likely(__pyx_t_8)) {
-      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_7);
-      __Pyx_INCREF(__pyx_t_8);
-      __Pyx_INCREF(function);
-      __Pyx_DECREF_SET(__pyx_t_7, function);
-      __pyx_t_9 = 1;
-    }
-  }
-  #endif
-  {
-    PyObject *__pyx_callargs[2] = {__pyx_t_8, __pyx_t_6};
-    __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_7, __pyx_callargs+1-__pyx_t_9, 1+__pyx_t_9);
-    __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
-    __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 363, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_3);
-    __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
-  }
-  __pyx_v_value = __pyx_t_3;
-  __pyx_t_3 = 0;
-
-  /* "dual_autodiff_x/autodiff_tools.pyx":367
- *     # This accounts for the case in which the function is constant and therefore resturns a constant non dual number
- *     # Assumes this is the case and creates a dual number with derivative 0
- *     if not isinstance(value, Dual):             # <<<<<<<<<<<<<<
- *         value = Dual(value, 0)
- * 
- */
-  __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_Dual); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 367, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  __pyx_t_1 = PyObject_IsInstance(__pyx_v_value, __pyx_t_3); if (unlikely(__pyx_t_1 == ((int)-1))) __PYX_ERR(0, 367, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_2 = (!__pyx_t_1);
-  if (__pyx_t_2) {
-
-    /* "dual_autodiff_x/autodiff_tools.pyx":368
- *     # Assumes this is the case and creates a dual number with derivative 0
- *     if not isinstance(value, Dual):
- *         value = Dual(value, 0)             # <<<<<<<<<<<<<<
- * 
- *     return value.dual
- */
-    __Pyx_GetModuleGlobalName(__pyx_t_7, __pyx_n_s_Dual); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 368, __pyx_L1_error)
+    __pyx_t_7 = __Pyx_PyObject_CallOneArg(__pyx_builtin_TypeError, __pyx_t_6); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 576, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_7);
-    __pyx_t_6 = NULL;
+    __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+    __Pyx_Raise(__pyx_t_7, 0, 0, 0);
+    __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+    __PYX_ERR(0, 576, __pyx_L1_error)
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":575
+ * 
+ *     # Check that input x is a scalar (float/int) or numpy array
+ *     if not isinstance(x, (float, int, np.ndarray)):             # <<<<<<<<<<<<<<
+ *         raise TypeError(f"x must be a scalar number (float/int) or numpy.ndarray, got {type(x).__name__}.")
+ * 
+ */
+  }
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":578
+ *         raise TypeError(f"x must be a scalar number (float/int) or numpy.ndarray, got {type(x).__name__}.")
+ * 
+ *     if isinstance(x, (float, int)):             # <<<<<<<<<<<<<<
+ *         # If x is a scalar, evaluate the function directly
+ *         value = func(Dual(x, 1))
+ */
+  __pyx_t_2 = PyFloat_Check(__pyx_v_x); 
+  if (!__pyx_t_2) {
+  } else {
+    __pyx_t_1 = __pyx_t_2;
+    goto __pyx_L9_bool_binop_done;
+  }
+  __pyx_t_2 = PyInt_Check(__pyx_v_x); 
+  __pyx_t_1 = __pyx_t_2;
+  __pyx_L9_bool_binop_done:;
+  if (__pyx_t_1) {
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":580
+ *     if isinstance(x, (float, int)):
+ *         # If x is a scalar, evaluate the function directly
+ *         value = func(Dual(x, 1))             # <<<<<<<<<<<<<<
+ *         # This accounts for the case in which the function is constant and therefore returns a constant non-dual number
+ *         # Assumes this is the case and creates a dual number with derivative 0
+ */
+    __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_Dual); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 580, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __pyx_t_8 = NULL;
     __pyx_t_9 = 0;
     #if CYTHON_UNPACK_METHODS
-    if (unlikely(PyMethod_Check(__pyx_t_7))) {
-      __pyx_t_6 = PyMethod_GET_SELF(__pyx_t_7);
-      if (likely(__pyx_t_6)) {
-        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_7);
-        __Pyx_INCREF(__pyx_t_6);
+    if (unlikely(PyMethod_Check(__pyx_t_3))) {
+      __pyx_t_8 = PyMethod_GET_SELF(__pyx_t_3);
+      if (likely(__pyx_t_8)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
+        __Pyx_INCREF(__pyx_t_8);
         __Pyx_INCREF(function);
-        __Pyx_DECREF_SET(__pyx_t_7, function);
+        __Pyx_DECREF_SET(__pyx_t_3, function);
         __pyx_t_9 = 1;
       }
     }
     #endif
     {
-      PyObject *__pyx_callargs[3] = {__pyx_t_6, __pyx_v_value, __pyx_int_0};
-      __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_7, __pyx_callargs+1-__pyx_t_9, 2+__pyx_t_9);
-      __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
-      if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 368, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_3);
-      __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+      PyObject *__pyx_callargs[3] = {__pyx_t_8, __pyx_v_x, __pyx_int_1};
+      __pyx_t_6 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_9, 2+__pyx_t_9);
+      __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
+      if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 580, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_6);
+      __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     }
-    __Pyx_DECREF_SET(__pyx_v_value, __pyx_t_3);
-    __pyx_t_3 = 0;
+    __Pyx_INCREF(__pyx_v_func);
+    __pyx_t_3 = __pyx_v_func; __pyx_t_8 = NULL;
+    __pyx_t_9 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_3))) {
+      __pyx_t_8 = PyMethod_GET_SELF(__pyx_t_3);
+      if (likely(__pyx_t_8)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
+        __Pyx_INCREF(__pyx_t_8);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_3, function);
+        __pyx_t_9 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[2] = {__pyx_t_8, __pyx_t_6};
+      __pyx_t_7 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_9, 1+__pyx_t_9);
+      __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
+      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+      if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 580, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_7);
+      __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    }
+    __pyx_v_value = __pyx_t_7;
+    __pyx_t_7 = 0;
 
-    /* "dual_autodiff_x/autodiff_tools.pyx":367
- *     # This accounts for the case in which the function is constant and therefore resturns a constant non dual number
- *     # Assumes this is the case and creates a dual number with derivative 0
- *     if not isinstance(value, Dual):             # <<<<<<<<<<<<<<
- *         value = Dual(value, 0)
+    /* "dual_autodiff_x/autodiff_tools.pyx":583
+ *         # This accounts for the case in which the function is constant and therefore returns a constant non-dual number
+ *         # Assumes this is the case and creates a dual number with derivative 0
+ *         if not isinstance(value, Dual):             # <<<<<<<<<<<<<<
+ *             value = Dual(value, 0)
  * 
  */
+    __Pyx_GetModuleGlobalName(__pyx_t_7, __pyx_n_s_Dual); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 583, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_7);
+    __pyx_t_1 = PyObject_IsInstance(__pyx_v_value, __pyx_t_7); if (unlikely(__pyx_t_1 == ((int)-1))) __PYX_ERR(0, 583, __pyx_L1_error)
+    __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+    __pyx_t_2 = (!__pyx_t_1);
+    if (__pyx_t_2) {
+
+      /* "dual_autodiff_x/autodiff_tools.pyx":584
+ *         # Assumes this is the case and creates a dual number with derivative 0
+ *         if not isinstance(value, Dual):
+ *             value = Dual(value, 0)             # <<<<<<<<<<<<<<
+ * 
+ *     else:
+ */
+      __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_Dual); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 584, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_3);
+      __pyx_t_6 = NULL;
+      __pyx_t_9 = 0;
+      #if CYTHON_UNPACK_METHODS
+      if (unlikely(PyMethod_Check(__pyx_t_3))) {
+        __pyx_t_6 = PyMethod_GET_SELF(__pyx_t_3);
+        if (likely(__pyx_t_6)) {
+          PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
+          __Pyx_INCREF(__pyx_t_6);
+          __Pyx_INCREF(function);
+          __Pyx_DECREF_SET(__pyx_t_3, function);
+          __pyx_t_9 = 1;
+        }
+      }
+      #endif
+      {
+        PyObject *__pyx_callargs[3] = {__pyx_t_6, __pyx_v_value, __pyx_int_0};
+        __pyx_t_7 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_9, 2+__pyx_t_9);
+        __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
+        if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 584, __pyx_L1_error)
+        __Pyx_GOTREF(__pyx_t_7);
+        __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+      }
+      __Pyx_DECREF_SET(__pyx_v_value, __pyx_t_7);
+      __pyx_t_7 = 0;
+
+      /* "dual_autodiff_x/autodiff_tools.pyx":583
+ *         # This accounts for the case in which the function is constant and therefore returns a constant non-dual number
+ *         # Assumes this is the case and creates a dual number with derivative 0
+ *         if not isinstance(value, Dual):             # <<<<<<<<<<<<<<
+ *             value = Dual(value, 0)
+ * 
+ */
+    }
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":578
+ *         raise TypeError(f"x must be a scalar number (float/int) or numpy.ndarray, got {type(x).__name__}.")
+ * 
+ *     if isinstance(x, (float, int)):             # <<<<<<<<<<<<<<
+ *         # If x is a scalar, evaluate the function directly
+ *         value = func(Dual(x, 1))
+ */
+    goto __pyx_L8;
   }
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":370
- *         value = Dual(value, 0)
+  /* "dual_autodiff_x/autodiff_tools.pyx":588
+ *     else:
+ *         # Checks that is x is a numpy array, it contains scalar values
+ *         if not np.issubdtype(x.dtype, np.number):             # <<<<<<<<<<<<<<
+ *             raise TypeError("numpy.ndarray must contain scalar values (float/int).")
  * 
- *     return value.dual             # <<<<<<<<<<<<<<
+ */
+  /*else*/ {
+    __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_np); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 588, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_issubdtype); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 588, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_6);
+    __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_x, __pyx_n_s_dtype); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 588, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_GetModuleGlobalName(__pyx_t_8, __pyx_n_s_np); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 588, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_8);
+    __pyx_t_10 = __Pyx_PyObject_GetAttrStr(__pyx_t_8, __pyx_n_s_number); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 588, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_10);
+    __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
+    __pyx_t_8 = NULL;
+    __pyx_t_9 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_6))) {
+      __pyx_t_8 = PyMethod_GET_SELF(__pyx_t_6);
+      if (likely(__pyx_t_8)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_6);
+        __Pyx_INCREF(__pyx_t_8);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_6, function);
+        __pyx_t_9 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[3] = {__pyx_t_8, __pyx_t_3, __pyx_t_10};
+      __pyx_t_7 = __Pyx_PyObject_FastCall(__pyx_t_6, __pyx_callargs+1-__pyx_t_9, 2+__pyx_t_9);
+      __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
+      __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+      __Pyx_DECREF(__pyx_t_10); __pyx_t_10 = 0;
+      if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 588, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_7);
+      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+    }
+    __pyx_t_2 = __Pyx_PyObject_IsTrue(__pyx_t_7); if (unlikely((__pyx_t_2 < 0))) __PYX_ERR(0, 588, __pyx_L1_error)
+    __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+    __pyx_t_1 = (!__pyx_t_2);
+    if (unlikely(__pyx_t_1)) {
+
+      /* "dual_autodiff_x/autodiff_tools.pyx":589
+ *         # Checks that is x is a numpy array, it contains scalar values
+ *         if not np.issubdtype(x.dtype, np.number):
+ *             raise TypeError("numpy.ndarray must contain scalar values (float/int).")             # <<<<<<<<<<<<<<
+ * 
+ *         # Compute the real and dual parts
+ */
+      __pyx_t_7 = __Pyx_PyObject_Call(__pyx_builtin_TypeError, __pyx_tuple__2, NULL); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 589, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_7);
+      __Pyx_Raise(__pyx_t_7, 0, 0, 0);
+      __Pyx_DECREF(__pyx_t_7); __pyx_t_7 = 0;
+      __PYX_ERR(0, 589, __pyx_L1_error)
+
+      /* "dual_autodiff_x/autodiff_tools.pyx":588
+ *     else:
+ *         # Checks that is x is a numpy array, it contains scalar values
+ *         if not np.issubdtype(x.dtype, np.number):             # <<<<<<<<<<<<<<
+ *             raise TypeError("numpy.ndarray must contain scalar values (float/int).")
+ * 
+ */
+    }
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":593
+ *         # Compute the real and dual parts
+ *         # As above accounts for the case in which the function is constant and therefore returns a constant non-dual number
+ *         real_parts = [func(Dual(float(xi), 1)).real if isinstance(func(Dual(float(xi), 1)), Dual) else func(Dual(float(xi), 1)) for xi in x]             # <<<<<<<<<<<<<<
+ *         dual_parts = [func(Dual(float(xi), 1)).dual if isinstance(func(Dual(float(xi), 1)), Dual) else 0 for xi in x]
+ * 
+ */
+    { /* enter inner scope */
+      __pyx_t_7 = PyList_New(0); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 593, __pyx_L15_error)
+      __Pyx_GOTREF(__pyx_t_7);
+      if (likely(PyList_CheckExact(__pyx_v_x)) || PyTuple_CheckExact(__pyx_v_x)) {
+        __pyx_t_6 = __pyx_v_x; __Pyx_INCREF(__pyx_t_6);
+        __pyx_t_4 = 0;
+        __pyx_t_11 = NULL;
+      } else {
+        __pyx_t_4 = -1; __pyx_t_6 = PyObject_GetIter(__pyx_v_x); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 593, __pyx_L15_error)
+        __Pyx_GOTREF(__pyx_t_6);
+        __pyx_t_11 = __Pyx_PyObject_GetIterNextFunc(__pyx_t_6); if (unlikely(!__pyx_t_11)) __PYX_ERR(0, 593, __pyx_L15_error)
+      }
+      for (;;) {
+        if (likely(!__pyx_t_11)) {
+          if (likely(PyList_CheckExact(__pyx_t_6))) {
+            {
+              Py_ssize_t __pyx_temp = __Pyx_PyList_GET_SIZE(__pyx_t_6);
+              #if !CYTHON_ASSUME_SAFE_MACROS
+              if (unlikely((__pyx_temp < 0))) __PYX_ERR(0, 593, __pyx_L15_error)
+              #endif
+              if (__pyx_t_4 >= __pyx_temp) break;
+            }
+            #if CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS
+            __pyx_t_10 = PyList_GET_ITEM(__pyx_t_6, __pyx_t_4); __Pyx_INCREF(__pyx_t_10); __pyx_t_4++; if (unlikely((0 < 0))) __PYX_ERR(0, 593, __pyx_L15_error)
+            #else
+            __pyx_t_10 = __Pyx_PySequence_ITEM(__pyx_t_6, __pyx_t_4); __pyx_t_4++; if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 593, __pyx_L15_error)
+            __Pyx_GOTREF(__pyx_t_10);
+            #endif
+          } else {
+            {
+              Py_ssize_t __pyx_temp = __Pyx_PyTuple_GET_SIZE(__pyx_t_6);
+              #if !CYTHON_ASSUME_SAFE_MACROS
+              if (unlikely((__pyx_temp < 0))) __PYX_ERR(0, 593, __pyx_L15_error)
+              #endif
+              if (__pyx_t_4 >= __pyx_temp) break;
+            }
+            #if CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS
+            __pyx_t_10 = PyTuple_GET_ITEM(__pyx_t_6, __pyx_t_4); __Pyx_INCREF(__pyx_t_10); __pyx_t_4++; if (unlikely((0 < 0))) __PYX_ERR(0, 593, __pyx_L15_error)
+            #else
+            __pyx_t_10 = __Pyx_PySequence_ITEM(__pyx_t_6, __pyx_t_4); __pyx_t_4++; if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 593, __pyx_L15_error)
+            __Pyx_GOTREF(__pyx_t_10);
+            #endif
+          }
+        } else {
+          __pyx_t_10 = __pyx_t_11(__pyx_t_6);
+          if (unlikely(!__pyx_t_10)) {
+            PyObject* exc_type = PyErr_Occurred();
+            if (exc_type) {
+              if (likely(__Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration))) PyErr_Clear();
+              else __PYX_ERR(0, 593, __pyx_L15_error)
+            }
+            break;
+          }
+          __Pyx_GOTREF(__pyx_t_10);
+        }
+        __Pyx_XDECREF_SET(__pyx_7genexpr__pyx_v_xi, __pyx_t_10);
+        __pyx_t_10 = 0;
+        __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_n_s_Dual); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 593, __pyx_L15_error)
+        __Pyx_GOTREF(__pyx_t_12);
+        __pyx_t_13 = __Pyx_PyNumber_Float(__pyx_7genexpr__pyx_v_xi); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 593, __pyx_L15_error)
+        __Pyx_GOTREF(__pyx_t_13);
+        __pyx_t_14 = NULL;
+        __pyx_t_9 = 0;
+        #if CYTHON_UNPACK_METHODS
+        if (unlikely(PyMethod_Check(__pyx_t_12))) {
+          __pyx_t_14 = PyMethod_GET_SELF(__pyx_t_12);
+          if (likely(__pyx_t_14)) {
+            PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_12);
+            __Pyx_INCREF(__pyx_t_14);
+            __Pyx_INCREF(function);
+            __Pyx_DECREF_SET(__pyx_t_12, function);
+            __pyx_t_9 = 1;
+          }
+        }
+        #endif
+        {
+          PyObject *__pyx_callargs[3] = {__pyx_t_14, __pyx_t_13, __pyx_int_1};
+          __pyx_t_8 = __Pyx_PyObject_FastCall(__pyx_t_12, __pyx_callargs+1-__pyx_t_9, 2+__pyx_t_9);
+          __Pyx_XDECREF(__pyx_t_14); __pyx_t_14 = 0;
+          __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
+          if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 593, __pyx_L15_error)
+          __Pyx_GOTREF(__pyx_t_8);
+          __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
+        }
+        __Pyx_INCREF(__pyx_v_func);
+        __pyx_t_12 = __pyx_v_func; __pyx_t_13 = NULL;
+        __pyx_t_9 = 0;
+        #if CYTHON_UNPACK_METHODS
+        if (unlikely(PyMethod_Check(__pyx_t_12))) {
+          __pyx_t_13 = PyMethod_GET_SELF(__pyx_t_12);
+          if (likely(__pyx_t_13)) {
+            PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_12);
+            __Pyx_INCREF(__pyx_t_13);
+            __Pyx_INCREF(function);
+            __Pyx_DECREF_SET(__pyx_t_12, function);
+            __pyx_t_9 = 1;
+          }
+        }
+        #endif
+        {
+          PyObject *__pyx_callargs[2] = {__pyx_t_13, __pyx_t_8};
+          __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_12, __pyx_callargs+1-__pyx_t_9, 1+__pyx_t_9);
+          __Pyx_XDECREF(__pyx_t_13); __pyx_t_13 = 0;
+          __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
+          if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 593, __pyx_L15_error)
+          __Pyx_GOTREF(__pyx_t_3);
+          __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
+        }
+        __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_n_s_Dual); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 593, __pyx_L15_error)
+        __Pyx_GOTREF(__pyx_t_12);
+        __pyx_t_1 = PyObject_IsInstance(__pyx_t_3, __pyx_t_12); if (unlikely(__pyx_t_1 == ((int)-1))) __PYX_ERR(0, 593, __pyx_L15_error)
+        __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+        __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
+        if (__pyx_t_1) {
+          __Pyx_GetModuleGlobalName(__pyx_t_8, __pyx_n_s_Dual); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 593, __pyx_L15_error)
+          __Pyx_GOTREF(__pyx_t_8);
+          __pyx_t_13 = __Pyx_PyNumber_Float(__pyx_7genexpr__pyx_v_xi); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 593, __pyx_L15_error)
+          __Pyx_GOTREF(__pyx_t_13);
+          __pyx_t_14 = NULL;
+          __pyx_t_9 = 0;
+          #if CYTHON_UNPACK_METHODS
+          if (unlikely(PyMethod_Check(__pyx_t_8))) {
+            __pyx_t_14 = PyMethod_GET_SELF(__pyx_t_8);
+            if (likely(__pyx_t_14)) {
+              PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_8);
+              __Pyx_INCREF(__pyx_t_14);
+              __Pyx_INCREF(function);
+              __Pyx_DECREF_SET(__pyx_t_8, function);
+              __pyx_t_9 = 1;
+            }
+          }
+          #endif
+          {
+            PyObject *__pyx_callargs[3] = {__pyx_t_14, __pyx_t_13, __pyx_int_1};
+            __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_8, __pyx_callargs+1-__pyx_t_9, 2+__pyx_t_9);
+            __Pyx_XDECREF(__pyx_t_14); __pyx_t_14 = 0;
+            __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
+            if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 593, __pyx_L15_error)
+            __Pyx_GOTREF(__pyx_t_3);
+            __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
+          }
+          __Pyx_INCREF(__pyx_v_func);
+          __pyx_t_8 = __pyx_v_func; __pyx_t_13 = NULL;
+          __pyx_t_9 = 0;
+          #if CYTHON_UNPACK_METHODS
+          if (unlikely(PyMethod_Check(__pyx_t_8))) {
+            __pyx_t_13 = PyMethod_GET_SELF(__pyx_t_8);
+            if (likely(__pyx_t_13)) {
+              PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_8);
+              __Pyx_INCREF(__pyx_t_13);
+              __Pyx_INCREF(function);
+              __Pyx_DECREF_SET(__pyx_t_8, function);
+              __pyx_t_9 = 1;
+            }
+          }
+          #endif
+          {
+            PyObject *__pyx_callargs[2] = {__pyx_t_13, __pyx_t_3};
+            __pyx_t_12 = __Pyx_PyObject_FastCall(__pyx_t_8, __pyx_callargs+1-__pyx_t_9, 1+__pyx_t_9);
+            __Pyx_XDECREF(__pyx_t_13); __pyx_t_13 = 0;
+            __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+            if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 593, __pyx_L15_error)
+            __Pyx_GOTREF(__pyx_t_12);
+            __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
+          }
+          __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_t_12, __pyx_n_s_real); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 593, __pyx_L15_error)
+          __Pyx_GOTREF(__pyx_t_8);
+          __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
+          __pyx_t_10 = __pyx_t_8;
+          __pyx_t_8 = 0;
+        } else {
+          __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_Dual); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 593, __pyx_L15_error)
+          __Pyx_GOTREF(__pyx_t_3);
+          __pyx_t_13 = __Pyx_PyNumber_Float(__pyx_7genexpr__pyx_v_xi); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 593, __pyx_L15_error)
+          __Pyx_GOTREF(__pyx_t_13);
+          __pyx_t_14 = NULL;
+          __pyx_t_9 = 0;
+          #if CYTHON_UNPACK_METHODS
+          if (unlikely(PyMethod_Check(__pyx_t_3))) {
+            __pyx_t_14 = PyMethod_GET_SELF(__pyx_t_3);
+            if (likely(__pyx_t_14)) {
+              PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
+              __Pyx_INCREF(__pyx_t_14);
+              __Pyx_INCREF(function);
+              __Pyx_DECREF_SET(__pyx_t_3, function);
+              __pyx_t_9 = 1;
+            }
+          }
+          #endif
+          {
+            PyObject *__pyx_callargs[3] = {__pyx_t_14, __pyx_t_13, __pyx_int_1};
+            __pyx_t_12 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_9, 2+__pyx_t_9);
+            __Pyx_XDECREF(__pyx_t_14); __pyx_t_14 = 0;
+            __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
+            if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 593, __pyx_L15_error)
+            __Pyx_GOTREF(__pyx_t_12);
+            __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+          }
+          __Pyx_INCREF(__pyx_v_func);
+          __pyx_t_3 = __pyx_v_func; __pyx_t_13 = NULL;
+          __pyx_t_9 = 0;
+          #if CYTHON_UNPACK_METHODS
+          if (unlikely(PyMethod_Check(__pyx_t_3))) {
+            __pyx_t_13 = PyMethod_GET_SELF(__pyx_t_3);
+            if (likely(__pyx_t_13)) {
+              PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
+              __Pyx_INCREF(__pyx_t_13);
+              __Pyx_INCREF(function);
+              __Pyx_DECREF_SET(__pyx_t_3, function);
+              __pyx_t_9 = 1;
+            }
+          }
+          #endif
+          {
+            PyObject *__pyx_callargs[2] = {__pyx_t_13, __pyx_t_12};
+            __pyx_t_8 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_9, 1+__pyx_t_9);
+            __Pyx_XDECREF(__pyx_t_13); __pyx_t_13 = 0;
+            __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
+            if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 593, __pyx_L15_error)
+            __Pyx_GOTREF(__pyx_t_8);
+            __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+          }
+          __pyx_t_10 = __pyx_t_8;
+          __pyx_t_8 = 0;
+        }
+        if (unlikely(__Pyx_ListComp_Append(__pyx_t_7, (PyObject*)__pyx_t_10))) __PYX_ERR(0, 593, __pyx_L15_error)
+        __Pyx_DECREF(__pyx_t_10); __pyx_t_10 = 0;
+      }
+      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+      __Pyx_XDECREF(__pyx_7genexpr__pyx_v_xi); __pyx_7genexpr__pyx_v_xi = 0;
+      goto __pyx_L19_exit_scope;
+      __pyx_L15_error:;
+      __Pyx_XDECREF(__pyx_7genexpr__pyx_v_xi); __pyx_7genexpr__pyx_v_xi = 0;
+      goto __pyx_L1_error;
+      __pyx_L19_exit_scope:;
+    } /* exit inner scope */
+    __pyx_v_real_parts = ((PyObject*)__pyx_t_7);
+    __pyx_t_7 = 0;
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":594
+ *         # As above accounts for the case in which the function is constant and therefore returns a constant non-dual number
+ *         real_parts = [func(Dual(float(xi), 1)).real if isinstance(func(Dual(float(xi), 1)), Dual) else func(Dual(float(xi), 1)) for xi in x]
+ *         dual_parts = [func(Dual(float(xi), 1)).dual if isinstance(func(Dual(float(xi), 1)), Dual) else 0 for xi in x]             # <<<<<<<<<<<<<<
+ * 
+ *         return np.array(real_parts), np.array(dual_parts)
+ */
+    { /* enter inner scope */
+      __pyx_t_7 = PyList_New(0); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 594, __pyx_L22_error)
+      __Pyx_GOTREF(__pyx_t_7);
+      if (likely(PyList_CheckExact(__pyx_v_x)) || PyTuple_CheckExact(__pyx_v_x)) {
+        __pyx_t_6 = __pyx_v_x; __Pyx_INCREF(__pyx_t_6);
+        __pyx_t_4 = 0;
+        __pyx_t_11 = NULL;
+      } else {
+        __pyx_t_4 = -1; __pyx_t_6 = PyObject_GetIter(__pyx_v_x); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 594, __pyx_L22_error)
+        __Pyx_GOTREF(__pyx_t_6);
+        __pyx_t_11 = __Pyx_PyObject_GetIterNextFunc(__pyx_t_6); if (unlikely(!__pyx_t_11)) __PYX_ERR(0, 594, __pyx_L22_error)
+      }
+      for (;;) {
+        if (likely(!__pyx_t_11)) {
+          if (likely(PyList_CheckExact(__pyx_t_6))) {
+            {
+              Py_ssize_t __pyx_temp = __Pyx_PyList_GET_SIZE(__pyx_t_6);
+              #if !CYTHON_ASSUME_SAFE_MACROS
+              if (unlikely((__pyx_temp < 0))) __PYX_ERR(0, 594, __pyx_L22_error)
+              #endif
+              if (__pyx_t_4 >= __pyx_temp) break;
+            }
+            #if CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS
+            __pyx_t_10 = PyList_GET_ITEM(__pyx_t_6, __pyx_t_4); __Pyx_INCREF(__pyx_t_10); __pyx_t_4++; if (unlikely((0 < 0))) __PYX_ERR(0, 594, __pyx_L22_error)
+            #else
+            __pyx_t_10 = __Pyx_PySequence_ITEM(__pyx_t_6, __pyx_t_4); __pyx_t_4++; if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 594, __pyx_L22_error)
+            __Pyx_GOTREF(__pyx_t_10);
+            #endif
+          } else {
+            {
+              Py_ssize_t __pyx_temp = __Pyx_PyTuple_GET_SIZE(__pyx_t_6);
+              #if !CYTHON_ASSUME_SAFE_MACROS
+              if (unlikely((__pyx_temp < 0))) __PYX_ERR(0, 594, __pyx_L22_error)
+              #endif
+              if (__pyx_t_4 >= __pyx_temp) break;
+            }
+            #if CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS
+            __pyx_t_10 = PyTuple_GET_ITEM(__pyx_t_6, __pyx_t_4); __Pyx_INCREF(__pyx_t_10); __pyx_t_4++; if (unlikely((0 < 0))) __PYX_ERR(0, 594, __pyx_L22_error)
+            #else
+            __pyx_t_10 = __Pyx_PySequence_ITEM(__pyx_t_6, __pyx_t_4); __pyx_t_4++; if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 594, __pyx_L22_error)
+            __Pyx_GOTREF(__pyx_t_10);
+            #endif
+          }
+        } else {
+          __pyx_t_10 = __pyx_t_11(__pyx_t_6);
+          if (unlikely(!__pyx_t_10)) {
+            PyObject* exc_type = PyErr_Occurred();
+            if (exc_type) {
+              if (likely(__Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration))) PyErr_Clear();
+              else __PYX_ERR(0, 594, __pyx_L22_error)
+            }
+            break;
+          }
+          __Pyx_GOTREF(__pyx_t_10);
+        }
+        __Pyx_XDECREF_SET(__pyx_8genexpr1__pyx_v_xi, __pyx_t_10);
+        __pyx_t_10 = 0;
+        __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_n_s_Dual); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 594, __pyx_L22_error)
+        __Pyx_GOTREF(__pyx_t_12);
+        __pyx_t_13 = __Pyx_PyNumber_Float(__pyx_8genexpr1__pyx_v_xi); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 594, __pyx_L22_error)
+        __Pyx_GOTREF(__pyx_t_13);
+        __pyx_t_14 = NULL;
+        __pyx_t_9 = 0;
+        #if CYTHON_UNPACK_METHODS
+        if (unlikely(PyMethod_Check(__pyx_t_12))) {
+          __pyx_t_14 = PyMethod_GET_SELF(__pyx_t_12);
+          if (likely(__pyx_t_14)) {
+            PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_12);
+            __Pyx_INCREF(__pyx_t_14);
+            __Pyx_INCREF(function);
+            __Pyx_DECREF_SET(__pyx_t_12, function);
+            __pyx_t_9 = 1;
+          }
+        }
+        #endif
+        {
+          PyObject *__pyx_callargs[3] = {__pyx_t_14, __pyx_t_13, __pyx_int_1};
+          __pyx_t_3 = __Pyx_PyObject_FastCall(__pyx_t_12, __pyx_callargs+1-__pyx_t_9, 2+__pyx_t_9);
+          __Pyx_XDECREF(__pyx_t_14); __pyx_t_14 = 0;
+          __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
+          if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 594, __pyx_L22_error)
+          __Pyx_GOTREF(__pyx_t_3);
+          __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
+        }
+        __Pyx_INCREF(__pyx_v_func);
+        __pyx_t_12 = __pyx_v_func; __pyx_t_13 = NULL;
+        __pyx_t_9 = 0;
+        #if CYTHON_UNPACK_METHODS
+        if (unlikely(PyMethod_Check(__pyx_t_12))) {
+          __pyx_t_13 = PyMethod_GET_SELF(__pyx_t_12);
+          if (likely(__pyx_t_13)) {
+            PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_12);
+            __Pyx_INCREF(__pyx_t_13);
+            __Pyx_INCREF(function);
+            __Pyx_DECREF_SET(__pyx_t_12, function);
+            __pyx_t_9 = 1;
+          }
+        }
+        #endif
+        {
+          PyObject *__pyx_callargs[2] = {__pyx_t_13, __pyx_t_3};
+          __pyx_t_8 = __Pyx_PyObject_FastCall(__pyx_t_12, __pyx_callargs+1-__pyx_t_9, 1+__pyx_t_9);
+          __Pyx_XDECREF(__pyx_t_13); __pyx_t_13 = 0;
+          __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+          if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 594, __pyx_L22_error)
+          __Pyx_GOTREF(__pyx_t_8);
+          __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
+        }
+        __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_n_s_Dual); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 594, __pyx_L22_error)
+        __Pyx_GOTREF(__pyx_t_12);
+        __pyx_t_1 = PyObject_IsInstance(__pyx_t_8, __pyx_t_12); if (unlikely(__pyx_t_1 == ((int)-1))) __PYX_ERR(0, 594, __pyx_L22_error)
+        __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
+        __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
+        if (__pyx_t_1) {
+          __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_Dual); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 594, __pyx_L22_error)
+          __Pyx_GOTREF(__pyx_t_3);
+          __pyx_t_13 = __Pyx_PyNumber_Float(__pyx_8genexpr1__pyx_v_xi); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 594, __pyx_L22_error)
+          __Pyx_GOTREF(__pyx_t_13);
+          __pyx_t_14 = NULL;
+          __pyx_t_9 = 0;
+          #if CYTHON_UNPACK_METHODS
+          if (unlikely(PyMethod_Check(__pyx_t_3))) {
+            __pyx_t_14 = PyMethod_GET_SELF(__pyx_t_3);
+            if (likely(__pyx_t_14)) {
+              PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
+              __Pyx_INCREF(__pyx_t_14);
+              __Pyx_INCREF(function);
+              __Pyx_DECREF_SET(__pyx_t_3, function);
+              __pyx_t_9 = 1;
+            }
+          }
+          #endif
+          {
+            PyObject *__pyx_callargs[3] = {__pyx_t_14, __pyx_t_13, __pyx_int_1};
+            __pyx_t_8 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_9, 2+__pyx_t_9);
+            __Pyx_XDECREF(__pyx_t_14); __pyx_t_14 = 0;
+            __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
+            if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 594, __pyx_L22_error)
+            __Pyx_GOTREF(__pyx_t_8);
+            __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+          }
+          __Pyx_INCREF(__pyx_v_func);
+          __pyx_t_3 = __pyx_v_func; __pyx_t_13 = NULL;
+          __pyx_t_9 = 0;
+          #if CYTHON_UNPACK_METHODS
+          if (unlikely(PyMethod_Check(__pyx_t_3))) {
+            __pyx_t_13 = PyMethod_GET_SELF(__pyx_t_3);
+            if (likely(__pyx_t_13)) {
+              PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
+              __Pyx_INCREF(__pyx_t_13);
+              __Pyx_INCREF(function);
+              __Pyx_DECREF_SET(__pyx_t_3, function);
+              __pyx_t_9 = 1;
+            }
+          }
+          #endif
+          {
+            PyObject *__pyx_callargs[2] = {__pyx_t_13, __pyx_t_8};
+            __pyx_t_12 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_9, 1+__pyx_t_9);
+            __Pyx_XDECREF(__pyx_t_13); __pyx_t_13 = 0;
+            __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
+            if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 594, __pyx_L22_error)
+            __Pyx_GOTREF(__pyx_t_12);
+            __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+          }
+          __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_12, __pyx_n_s_dual); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 594, __pyx_L22_error)
+          __Pyx_GOTREF(__pyx_t_3);
+          __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
+          __pyx_t_10 = __pyx_t_3;
+          __pyx_t_3 = 0;
+        } else {
+          __Pyx_INCREF(__pyx_int_0);
+          __pyx_t_10 = __pyx_int_0;
+        }
+        if (unlikely(__Pyx_ListComp_Append(__pyx_t_7, (PyObject*)__pyx_t_10))) __PYX_ERR(0, 594, __pyx_L22_error)
+        __Pyx_DECREF(__pyx_t_10); __pyx_t_10 = 0;
+      }
+      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+      __Pyx_XDECREF(__pyx_8genexpr1__pyx_v_xi); __pyx_8genexpr1__pyx_v_xi = 0;
+      goto __pyx_L26_exit_scope;
+      __pyx_L22_error:;
+      __Pyx_XDECREF(__pyx_8genexpr1__pyx_v_xi); __pyx_8genexpr1__pyx_v_xi = 0;
+      goto __pyx_L1_error;
+      __pyx_L26_exit_scope:;
+    } /* exit inner scope */
+    __pyx_v_dual_parts = ((PyObject*)__pyx_t_7);
+    __pyx_t_7 = 0;
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":596
+ *         dual_parts = [func(Dual(float(xi), 1)).dual if isinstance(func(Dual(float(xi), 1)), Dual) else 0 for xi in x]
+ * 
+ *         return np.array(real_parts), np.array(dual_parts)             # <<<<<<<<<<<<<<
+ * 
+ *     return value.real, value.dual
+ */
+    __Pyx_XDECREF(__pyx_r);
+    __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_np); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 596, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_6);
+    __pyx_t_10 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_n_s_array); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 596, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_10);
+    __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+    __pyx_t_6 = NULL;
+    __pyx_t_9 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_10))) {
+      __pyx_t_6 = PyMethod_GET_SELF(__pyx_t_10);
+      if (likely(__pyx_t_6)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_10);
+        __Pyx_INCREF(__pyx_t_6);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_10, function);
+        __pyx_t_9 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[2] = {__pyx_t_6, __pyx_v_real_parts};
+      __pyx_t_7 = __Pyx_PyObject_FastCall(__pyx_t_10, __pyx_callargs+1-__pyx_t_9, 1+__pyx_t_9);
+      __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
+      if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 596, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_7);
+      __Pyx_DECREF(__pyx_t_10); __pyx_t_10 = 0;
+    }
+    __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_np); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 596, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_6);
+    __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_n_s_array); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 596, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+    __pyx_t_6 = NULL;
+    __pyx_t_9 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_3))) {
+      __pyx_t_6 = PyMethod_GET_SELF(__pyx_t_3);
+      if (likely(__pyx_t_6)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_3);
+        __Pyx_INCREF(__pyx_t_6);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_3, function);
+        __pyx_t_9 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[2] = {__pyx_t_6, __pyx_v_dual_parts};
+      __pyx_t_10 = __Pyx_PyObject_FastCall(__pyx_t_3, __pyx_callargs+1-__pyx_t_9, 1+__pyx_t_9);
+      __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
+      if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 596, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_10);
+      __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+    }
+    __pyx_t_3 = PyTuple_New(2); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 596, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+    __Pyx_GIVEREF(__pyx_t_7);
+    if (__Pyx_PyTuple_SET_ITEM(__pyx_t_3, 0, __pyx_t_7)) __PYX_ERR(0, 596, __pyx_L1_error);
+    __Pyx_GIVEREF(__pyx_t_10);
+    if (__Pyx_PyTuple_SET_ITEM(__pyx_t_3, 1, __pyx_t_10)) __PYX_ERR(0, 596, __pyx_L1_error);
+    __pyx_t_7 = 0;
+    __pyx_t_10 = 0;
+    __pyx_r = __pyx_t_3;
+    __pyx_t_3 = 0;
+    goto __pyx_L0;
+  }
+  __pyx_L8:;
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":598
+ *         return np.array(real_parts), np.array(dual_parts)
+ * 
+ *     return value.real, value.dual             # <<<<<<<<<<<<<<
+ * 
+ * # Evaluates multiple functions value and derivative at x using Dual number/ automatic differentiation
  */
   __Pyx_XDECREF(__pyx_r);
-  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_value, __pyx_n_s_dual); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 370, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_v_value, __pyx_n_s_real); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 598, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __pyx_r = __pyx_t_3;
+  __pyx_t_10 = __Pyx_PyObject_GetAttrStr(__pyx_v_value, __pyx_n_s_dual); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 598, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_10);
+  __pyx_t_7 = PyTuple_New(2); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 598, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_7);
+  __Pyx_GIVEREF(__pyx_t_3);
+  if (__Pyx_PyTuple_SET_ITEM(__pyx_t_7, 0, __pyx_t_3)) __PYX_ERR(0, 598, __pyx_L1_error);
+  __Pyx_GIVEREF(__pyx_t_10);
+  if (__Pyx_PyTuple_SET_ITEM(__pyx_t_7, 1, __pyx_t_10)) __PYX_ERR(0, 598, __pyx_L1_error);
   __pyx_t_3 = 0;
+  __pyx_t_10 = 0;
+  __pyx_r = __pyx_t_7;
+  __pyx_t_7 = 0;
   goto __pyx_L0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":335
+  /* "dual_autodiff_x/autodiff_tools.pyx":544
  * # Evaluates a function on a dual number and returns the dual part of result
- * # Corrosponds to derivative - ie preforms automatic differentiation
+ * # Corresponds to derivative - ie performs automatic differentiation
  * def auto_diff(func, x):             # <<<<<<<<<<<<<<
  *     """
  *     Evaluates the derivative of a function f at x using Dual number: x + .
@@ -6150,10 +7971,371 @@ static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_26auto_diff(CYTHON_
   __Pyx_XDECREF(__pyx_t_6);
   __Pyx_XDECREF(__pyx_t_7);
   __Pyx_XDECREF(__pyx_t_8);
+  __Pyx_XDECREF(__pyx_t_10);
+  __Pyx_XDECREF(__pyx_t_12);
+  __Pyx_XDECREF(__pyx_t_13);
+  __Pyx_XDECREF(__pyx_t_14);
   __Pyx_AddTraceback("dual_autodiff_x.autodiff_tools.auto_diff", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
   __Pyx_XDECREF(__pyx_v_value);
+  __Pyx_XDECREF(__pyx_v_real_parts);
+  __Pyx_XDECREF(__pyx_v_dual_parts);
+  __Pyx_XDECREF(__pyx_7genexpr__pyx_v_xi);
+  __Pyx_XDECREF(__pyx_8genexpr1__pyx_v_xi);
+  __Pyx_XGIVEREF(__pyx_r);
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
+
+/* "dual_autodiff_x/autodiff_tools.pyx":604
+ * # Returns a list of tuples, each containing the real and dual parts of the result for each function
+ * # uses auto_diff to evaluate each function
+ * def multi_auto_diff(funcs, x):             # <<<<<<<<<<<<<<
+ *     """
+ *     Evaluates the derivatives of multiple functions at x using Dual number: x + .
+ */
+
+/* Python wrapper */
+static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_29multi_auto_diff(PyObject *__pyx_self, 
+#if CYTHON_METH_FASTCALL
+PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
+#else
+PyObject *__pyx_args, PyObject *__pyx_kwds
+#endif
+); /*proto*/
+PyDoc_STRVAR(__pyx_doc_15dual_autodiff_x_14autodiff_tools_28multi_auto_diff, "\n    Evaluates the derivatives of multiple functions at x using Dual number: x + \316\265.\n\n    Parameters:\n        funcs (list of callables): The functions to differentiate.\n        x (float, int, or numpy.ndarray): The point(s) where the derivatives are evaluated.\n\n    Returns:\n        list of tuples: A list of tuples, each containing the real and dual parts of the result for each function.\n                        If x is a scalar, each tuple is (real, dual).\n                        If x is a numpy array, each tuple contains two numpy arrays (real_array, dual_array).\n\n    Raises:\n        TypeError: If any func in funcs is not callable.\n        TypeError: If input x is not a float, int, or numpy.ndarray containing scalar values.\n\n    Examples:\n        >>> from dual_autodiff import multi_auto_diff\n    1. With a scalar input:\n        >>> multi_auto_diff([lambda x: x**3, lambda x: x**2], 2)\n        [(8.0, 12.0), (4.0, 4.0)]\n    2. With a numpy array input:\n        >>> multi_auto_diff([lambda x: x**3, lambda x: x**2], np.array([1, 2, 3]))\n        [(array([ 1.0,  8.0, 27.0]), array([ 3.0, 12.0, 27.0])), (array([1.0, 4.0, 9.0]), array([2.0, 4.0, 6.0]))]\n    ");
+static PyMethodDef __pyx_mdef_15dual_autodiff_x_14autodiff_tools_29multi_auto_diff = {"multi_auto_diff", (PyCFunction)(void*)(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_15dual_autodiff_x_14autodiff_tools_29multi_auto_diff, __Pyx_METH_FASTCALL|METH_KEYWORDS, __pyx_doc_15dual_autodiff_x_14autodiff_tools_28multi_auto_diff};
+static PyObject *__pyx_pw_15dual_autodiff_x_14autodiff_tools_29multi_auto_diff(PyObject *__pyx_self, 
+#if CYTHON_METH_FASTCALL
+PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
+#else
+PyObject *__pyx_args, PyObject *__pyx_kwds
+#endif
+) {
+  PyObject *__pyx_v_funcs = 0;
+  PyObject *__pyx_v_x = 0;
+  #if !CYTHON_METH_FASTCALL
+  CYTHON_UNUSED Py_ssize_t __pyx_nargs;
+  #endif
+  CYTHON_UNUSED PyObject *const *__pyx_kwvalues;
+  PyObject* values[2] = {0,0};
+  int __pyx_lineno = 0;
+  const char *__pyx_filename = NULL;
+  int __pyx_clineno = 0;
+  PyObject *__pyx_r = 0;
+  __Pyx_RefNannyDeclarations
+  __Pyx_RefNannySetupContext("multi_auto_diff (wrapper)", 0);
+  #if !CYTHON_METH_FASTCALL
+  #if CYTHON_ASSUME_SAFE_MACROS
+  __pyx_nargs = PyTuple_GET_SIZE(__pyx_args);
+  #else
+  __pyx_nargs = PyTuple_Size(__pyx_args); if (unlikely(__pyx_nargs < 0)) return NULL;
+  #endif
+  #endif
+  __pyx_kwvalues = __Pyx_KwValues_FASTCALL(__pyx_args, __pyx_nargs);
+  {
+    PyObject **__pyx_pyargnames[] = {&__pyx_n_s_funcs,&__pyx_n_s_x,0};
+    if (__pyx_kwds) {
+      Py_ssize_t kw_args;
+      switch (__pyx_nargs) {
+        case  2: values[1] = __Pyx_Arg_FASTCALL(__pyx_args, 1);
+        CYTHON_FALLTHROUGH;
+        case  1: values[0] = __Pyx_Arg_FASTCALL(__pyx_args, 0);
+        CYTHON_FALLTHROUGH;
+        case  0: break;
+        default: goto __pyx_L5_argtuple_error;
+      }
+      kw_args = __Pyx_NumKwargs_FASTCALL(__pyx_kwds);
+      switch (__pyx_nargs) {
+        case  0:
+        if (likely((values[0] = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_funcs)) != 0)) {
+          (void)__Pyx_Arg_NewRef_FASTCALL(values[0]);
+          kw_args--;
+        }
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 604, __pyx_L3_error)
+        else goto __pyx_L5_argtuple_error;
+        CYTHON_FALLTHROUGH;
+        case  1:
+        if (likely((values[1] = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_x)) != 0)) {
+          (void)__Pyx_Arg_NewRef_FASTCALL(values[1]);
+          kw_args--;
+        }
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 604, __pyx_L3_error)
+        else {
+          __Pyx_RaiseArgtupleInvalid("multi_auto_diff", 1, 2, 2, 1); __PYX_ERR(0, 604, __pyx_L3_error)
+        }
+      }
+      if (unlikely(kw_args > 0)) {
+        const Py_ssize_t kwd_pos_args = __pyx_nargs;
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "multi_auto_diff") < 0)) __PYX_ERR(0, 604, __pyx_L3_error)
+      }
+    } else if (unlikely(__pyx_nargs != 2)) {
+      goto __pyx_L5_argtuple_error;
+    } else {
+      values[0] = __Pyx_Arg_FASTCALL(__pyx_args, 0);
+      values[1] = __Pyx_Arg_FASTCALL(__pyx_args, 1);
+    }
+    __pyx_v_funcs = values[0];
+    __pyx_v_x = values[1];
+  }
+  goto __pyx_L6_skip;
+  __pyx_L5_argtuple_error:;
+  __Pyx_RaiseArgtupleInvalid("multi_auto_diff", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 604, __pyx_L3_error)
+  __pyx_L6_skip:;
+  goto __pyx_L4_argument_unpacking_done;
+  __pyx_L3_error:;
+  {
+    Py_ssize_t __pyx_temp;
+    for (__pyx_temp=0; __pyx_temp < (Py_ssize_t)(sizeof(values)/sizeof(values[0])); ++__pyx_temp) {
+      __Pyx_Arg_XDECREF_FASTCALL(values[__pyx_temp]);
+    }
+  }
+  __Pyx_AddTraceback("dual_autodiff_x.autodiff_tools.multi_auto_diff", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_RefNannyFinishContext();
+  return NULL;
+  __pyx_L4_argument_unpacking_done:;
+  __pyx_r = __pyx_pf_15dual_autodiff_x_14autodiff_tools_28multi_auto_diff(__pyx_self, __pyx_v_funcs, __pyx_v_x);
+
+  /* function exit code */
+  {
+    Py_ssize_t __pyx_temp;
+    for (__pyx_temp=0; __pyx_temp < (Py_ssize_t)(sizeof(values)/sizeof(values[0])); ++__pyx_temp) {
+      __Pyx_Arg_XDECREF_FASTCALL(values[__pyx_temp]);
+    }
+  }
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
+
+static PyObject *__pyx_pf_15dual_autodiff_x_14autodiff_tools_28multi_auto_diff(CYTHON_UNUSED PyObject *__pyx_self, PyObject *__pyx_v_funcs, PyObject *__pyx_v_x) {
+  PyObject *__pyx_v_results = NULL;
+  PyObject *__pyx_v_func = NULL;
+  PyObject *__pyx_r = NULL;
+  __Pyx_RefNannyDeclarations
+  PyObject *__pyx_t_1 = NULL;
+  Py_ssize_t __pyx_t_2;
+  PyObject *(*__pyx_t_3)(PyObject *);
+  PyObject *__pyx_t_4 = NULL;
+  int __pyx_t_5;
+  int __pyx_t_6;
+  Py_ssize_t __pyx_t_7;
+  Py_UCS4 __pyx_t_8;
+  PyObject *__pyx_t_9 = NULL;
+  PyObject *__pyx_t_10 = NULL;
+  unsigned int __pyx_t_11;
+  int __pyx_t_12;
+  int __pyx_lineno = 0;
+  const char *__pyx_filename = NULL;
+  int __pyx_clineno = 0;
+  __Pyx_RefNannySetupContext("multi_auto_diff", 1);
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":630
+ *         [(array([ 1.0,  8.0, 27.0]), array([ 3.0, 12.0, 27.0])), (array([1.0, 4.0, 9.0]), array([2.0, 4.0, 6.0]))]
+ *     """
+ *     results = []             # <<<<<<<<<<<<<<
+ *     for func in funcs:
+ *         if not callable(func):
+ */
+  __pyx_t_1 = PyList_New(0); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 630, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_v_results = ((PyObject*)__pyx_t_1);
+  __pyx_t_1 = 0;
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":631
+ *     """
+ *     results = []
+ *     for func in funcs:             # <<<<<<<<<<<<<<
+ *         if not callable(func):
+ *             raise TypeError(f"Each func must be a callable function, got {type(func).__name__}.")
+ */
+  if (likely(PyList_CheckExact(__pyx_v_funcs)) || PyTuple_CheckExact(__pyx_v_funcs)) {
+    __pyx_t_1 = __pyx_v_funcs; __Pyx_INCREF(__pyx_t_1);
+    __pyx_t_2 = 0;
+    __pyx_t_3 = NULL;
+  } else {
+    __pyx_t_2 = -1; __pyx_t_1 = PyObject_GetIter(__pyx_v_funcs); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 631, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+    __pyx_t_3 = __Pyx_PyObject_GetIterNextFunc(__pyx_t_1); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 631, __pyx_L1_error)
+  }
+  for (;;) {
+    if (likely(!__pyx_t_3)) {
+      if (likely(PyList_CheckExact(__pyx_t_1))) {
+        {
+          Py_ssize_t __pyx_temp = __Pyx_PyList_GET_SIZE(__pyx_t_1);
+          #if !CYTHON_ASSUME_SAFE_MACROS
+          if (unlikely((__pyx_temp < 0))) __PYX_ERR(0, 631, __pyx_L1_error)
+          #endif
+          if (__pyx_t_2 >= __pyx_temp) break;
+        }
+        #if CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS
+        __pyx_t_4 = PyList_GET_ITEM(__pyx_t_1, __pyx_t_2); __Pyx_INCREF(__pyx_t_4); __pyx_t_2++; if (unlikely((0 < 0))) __PYX_ERR(0, 631, __pyx_L1_error)
+        #else
+        __pyx_t_4 = __Pyx_PySequence_ITEM(__pyx_t_1, __pyx_t_2); __pyx_t_2++; if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 631, __pyx_L1_error)
+        __Pyx_GOTREF(__pyx_t_4);
+        #endif
+      } else {
+        {
+          Py_ssize_t __pyx_temp = __Pyx_PyTuple_GET_SIZE(__pyx_t_1);
+          #if !CYTHON_ASSUME_SAFE_MACROS
+          if (unlikely((__pyx_temp < 0))) __PYX_ERR(0, 631, __pyx_L1_error)
+          #endif
+          if (__pyx_t_2 >= __pyx_temp) break;
+        }
+        #if CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS
+        __pyx_t_4 = PyTuple_GET_ITEM(__pyx_t_1, __pyx_t_2); __Pyx_INCREF(__pyx_t_4); __pyx_t_2++; if (unlikely((0 < 0))) __PYX_ERR(0, 631, __pyx_L1_error)
+        #else
+        __pyx_t_4 = __Pyx_PySequence_ITEM(__pyx_t_1, __pyx_t_2); __pyx_t_2++; if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 631, __pyx_L1_error)
+        __Pyx_GOTREF(__pyx_t_4);
+        #endif
+      }
+    } else {
+      __pyx_t_4 = __pyx_t_3(__pyx_t_1);
+      if (unlikely(!__pyx_t_4)) {
+        PyObject* exc_type = PyErr_Occurred();
+        if (exc_type) {
+          if (likely(__Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration))) PyErr_Clear();
+          else __PYX_ERR(0, 631, __pyx_L1_error)
+        }
+        break;
+      }
+      __Pyx_GOTREF(__pyx_t_4);
+    }
+    __Pyx_XDECREF_SET(__pyx_v_func, __pyx_t_4);
+    __pyx_t_4 = 0;
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":632
+ *     results = []
+ *     for func in funcs:
+ *         if not callable(func):             # <<<<<<<<<<<<<<
+ *             raise TypeError(f"Each func must be a callable function, got {type(func).__name__}.")
+ *         results.append(auto_diff(func, x))
+ */
+    __pyx_t_5 = __Pyx_PyCallable_Check(__pyx_v_func); if (unlikely(__pyx_t_5 == ((int)-1))) __PYX_ERR(0, 632, __pyx_L1_error)
+    __pyx_t_6 = (!__pyx_t_5);
+    if (unlikely(__pyx_t_6)) {
+
+      /* "dual_autodiff_x/autodiff_tools.pyx":633
+ *     for func in funcs:
+ *         if not callable(func):
+ *             raise TypeError(f"Each func must be a callable function, got {type(func).__name__}.")             # <<<<<<<<<<<<<<
+ *         results.append(auto_diff(func, x))
+ * 
+ */
+      __pyx_t_4 = PyTuple_New(3); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 633, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_4);
+      __pyx_t_7 = 0;
+      __pyx_t_8 = 127;
+      __Pyx_INCREF(__pyx_kp_u_Each_func_must_be_a_callable_fun);
+      __pyx_t_7 += 43;
+      __Pyx_GIVEREF(__pyx_kp_u_Each_func_must_be_a_callable_fun);
+      PyTuple_SET_ITEM(__pyx_t_4, 0, __pyx_kp_u_Each_func_must_be_a_callable_fun);
+      __pyx_t_9 = __Pyx_PyObject_GetAttrStr(((PyObject *)Py_TYPE(__pyx_v_func)), __pyx_n_s_name); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 633, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_9);
+      __pyx_t_10 = __Pyx_PyObject_FormatSimple(__pyx_t_9, __pyx_empty_unicode); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 633, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_10);
+      __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
+      __pyx_t_8 = (__Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_10) > __pyx_t_8) ? __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_10) : __pyx_t_8;
+      __pyx_t_7 += __Pyx_PyUnicode_GET_LENGTH(__pyx_t_10);
+      __Pyx_GIVEREF(__pyx_t_10);
+      PyTuple_SET_ITEM(__pyx_t_4, 1, __pyx_t_10);
+      __pyx_t_10 = 0;
+      __Pyx_INCREF(__pyx_kp_u_);
+      __pyx_t_7 += 1;
+      __Pyx_GIVEREF(__pyx_kp_u_);
+      PyTuple_SET_ITEM(__pyx_t_4, 2, __pyx_kp_u_);
+      __pyx_t_10 = __Pyx_PyUnicode_Join(__pyx_t_4, 3, __pyx_t_7, __pyx_t_8); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 633, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_10);
+      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+      __pyx_t_4 = __Pyx_PyObject_CallOneArg(__pyx_builtin_TypeError, __pyx_t_10); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 633, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_4);
+      __Pyx_DECREF(__pyx_t_10); __pyx_t_10 = 0;
+      __Pyx_Raise(__pyx_t_4, 0, 0, 0);
+      __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+      __PYX_ERR(0, 633, __pyx_L1_error)
+
+      /* "dual_autodiff_x/autodiff_tools.pyx":632
+ *     results = []
+ *     for func in funcs:
+ *         if not callable(func):             # <<<<<<<<<<<<<<
+ *             raise TypeError(f"Each func must be a callable function, got {type(func).__name__}.")
+ *         results.append(auto_diff(func, x))
+ */
+    }
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":634
+ *         if not callable(func):
+ *             raise TypeError(f"Each func must be a callable function, got {type(func).__name__}.")
+ *         results.append(auto_diff(func, x))             # <<<<<<<<<<<<<<
+ * 
+ *     # output structure: [[func1_f(x)], [func1_f'(x)], [func2_f(x)], [func2_f'(x)], ...]
+ */
+    __Pyx_GetModuleGlobalName(__pyx_t_10, __pyx_n_s_auto_diff); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 634, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_10);
+    __pyx_t_9 = NULL;
+    __pyx_t_11 = 0;
+    #if CYTHON_UNPACK_METHODS
+    if (unlikely(PyMethod_Check(__pyx_t_10))) {
+      __pyx_t_9 = PyMethod_GET_SELF(__pyx_t_10);
+      if (likely(__pyx_t_9)) {
+        PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_10);
+        __Pyx_INCREF(__pyx_t_9);
+        __Pyx_INCREF(function);
+        __Pyx_DECREF_SET(__pyx_t_10, function);
+        __pyx_t_11 = 1;
+      }
+    }
+    #endif
+    {
+      PyObject *__pyx_callargs[3] = {__pyx_t_9, __pyx_v_func, __pyx_v_x};
+      __pyx_t_4 = __Pyx_PyObject_FastCall(__pyx_t_10, __pyx_callargs+1-__pyx_t_11, 2+__pyx_t_11);
+      __Pyx_XDECREF(__pyx_t_9); __pyx_t_9 = 0;
+      if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 634, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_4);
+      __Pyx_DECREF(__pyx_t_10); __pyx_t_10 = 0;
+    }
+    __pyx_t_12 = __Pyx_PyList_Append(__pyx_v_results, __pyx_t_4); if (unlikely(__pyx_t_12 == ((int)-1))) __PYX_ERR(0, 634, __pyx_L1_error)
+    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+
+    /* "dual_autodiff_x/autodiff_tools.pyx":631
+ *     """
+ *     results = []
+ *     for func in funcs:             # <<<<<<<<<<<<<<
+ *         if not callable(func):
+ *             raise TypeError(f"Each func must be a callable function, got {type(func).__name__}.")
+ */
+  }
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":637
+ * 
+ *     # output structure: [[func1_f(x)], [func1_f'(x)], [func2_f(x)], [func2_f'(x)], ...]
+ *     return results             # <<<<<<<<<<<<<<
+ */
+  __Pyx_XDECREF(__pyx_r);
+  __Pyx_INCREF(__pyx_v_results);
+  __pyx_r = __pyx_v_results;
+  goto __pyx_L0;
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":604
+ * # Returns a list of tuples, each containing the real and dual parts of the result for each function
+ * # uses auto_diff to evaluate each function
+ * def multi_auto_diff(funcs, x):             # <<<<<<<<<<<<<<
+ *     """
+ *     Evaluates the derivatives of multiple functions at x using Dual number: x + .
+ */
+
+  /* function exit code */
+  __pyx_L1_error:;
+  __Pyx_XDECREF(__pyx_t_1);
+  __Pyx_XDECREF(__pyx_t_4);
+  __Pyx_XDECREF(__pyx_t_9);
+  __Pyx_XDECREF(__pyx_t_10);
+  __Pyx_AddTraceback("dual_autodiff_x.autodiff_tools.multi_auto_diff", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __pyx_r = NULL;
+  __pyx_L0:;
+  __Pyx_XDECREF(__pyx_v_results);
+  __Pyx_XDECREF(__pyx_v_func);
   __Pyx_XGIVEREF(__pyx_r);
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
@@ -6176,48 +8358,60 @@ static PyMethodDef __pyx_methods[] = {
 static int __Pyx_CreateStringTabAndInitStrings(void) {
   __Pyx_StringTabEntry __pyx_string_tab[] = {
     {&__pyx_kp_u_, __pyx_k_, sizeof(__pyx_k_), 0, 1, 0, 0},
-    {&__pyx_kp_u_Compute_a_number_or_a_Dual_numb, __pyx_k_Compute_a_number_or_a_Dual_numb, sizeof(__pyx_k_Compute_a_number_or_a_Dual_numb), 0, 1, 0, 0},
+    {&__pyx_kp_u_Compute_a_number_a_Dual_number, __pyx_k_Compute_a_number_a_Dual_number, sizeof(__pyx_k_Compute_a_number_a_Dual_number), 0, 1, 0, 0},
     {&__pyx_kp_u_Compute_the_arccosine_of_a_numb, __pyx_k_Compute_the_arccosine_of_a_numb, sizeof(__pyx_k_Compute_the_arccosine_of_a_numb), 0, 1, 0, 0},
     {&__pyx_kp_u_Compute_the_arcsine_of_a_number, __pyx_k_Compute_the_arcsine_of_a_number, sizeof(__pyx_k_Compute_the_arcsine_of_a_number), 0, 1, 0, 0},
     {&__pyx_kp_u_Compute_the_arctangent_of_a_num, __pyx_k_Compute_the_arctangent_of_a_num, sizeof(__pyx_k_Compute_the_arctangent_of_a_num), 0, 1, 0, 0},
-    {&__pyx_kp_u_Compute_the_cosine_of_a_number, __pyx_k_Compute_the_cosine_of_a_number, sizeof(__pyx_k_Compute_the_cosine_of_a_number), 0, 1, 0, 0},
+    {&__pyx_kp_u_Compute_the_cos_of_a_number_a_D, __pyx_k_Compute_the_cos_of_a_number_a_D, sizeof(__pyx_k_Compute_the_cos_of_a_number_a_D), 0, 1, 0, 0},
     {&__pyx_kp_u_Compute_the_exponential_of_a_nu, __pyx_k_Compute_the_exponential_of_a_nu, sizeof(__pyx_k_Compute_the_exponential_of_a_nu), 0, 1, 0, 0},
     {&__pyx_kp_u_Compute_the_hyperbolic_cosine_o, __pyx_k_Compute_the_hyperbolic_cosine_o, sizeof(__pyx_k_Compute_the_hyperbolic_cosine_o), 0, 1, 0, 0},
     {&__pyx_kp_u_Compute_the_hyperbolic_sine_of, __pyx_k_Compute_the_hyperbolic_sine_of, sizeof(__pyx_k_Compute_the_hyperbolic_sine_of), 0, 1, 0, 0},
     {&__pyx_kp_u_Compute_the_hyperbolic_tangent, __pyx_k_Compute_the_hyperbolic_tangent, sizeof(__pyx_k_Compute_the_hyperbolic_tangent), 0, 1, 0, 0},
     {&__pyx_kp_u_Compute_the_natural_logarithm_o, __pyx_k_Compute_the_natural_logarithm_o, sizeof(__pyx_k_Compute_the_natural_logarithm_o), 0, 1, 0, 0},
-    {&__pyx_kp_u_Compute_the_sine_of_a_number_or, __pyx_k_Compute_the_sine_of_a_number_or, sizeof(__pyx_k_Compute_the_sine_of_a_number_or), 0, 1, 0, 0},
+    {&__pyx_kp_u_Compute_the_sin_of_a_number_a_D, __pyx_k_Compute_the_sin_of_a_number_a_D, sizeof(__pyx_k_Compute_the_sin_of_a_number_a_D), 0, 1, 0, 0},
     {&__pyx_kp_u_Compute_the_square_root_of_a_nu, __pyx_k_Compute_the_square_root_of_a_nu, sizeof(__pyx_k_Compute_the_square_root_of_a_nu), 0, 1, 0, 0},
     {&__pyx_kp_u_Compute_the_tangent_of_a_number, __pyx_k_Compute_the_tangent_of_a_number, sizeof(__pyx_k_Compute_the_tangent_of_a_number), 0, 1, 0, 0},
     {&__pyx_n_s_Dual, __pyx_k_Dual, sizeof(__pyx_k_Dual), 0, 0, 1, 1},
+    {&__pyx_kp_u_Each_func_must_be_a_callable_fun, __pyx_k_Each_func_must_be_a_callable_fun, sizeof(__pyx_k_Each_func_must_be_a_callable_fun), 0, 1, 0, 0},
     {&__pyx_kp_u_Evaluates_the_derivative_of_a_f, __pyx_k_Evaluates_the_derivative_of_a_f, sizeof(__pyx_k_Evaluates_the_derivative_of_a_f), 0, 1, 0, 0},
+    {&__pyx_kp_u_Evaluates_the_derivatives_of_mu, __pyx_k_Evaluates_the_derivatives_of_mu, sizeof(__pyx_k_Evaluates_the_derivatives_of_mu), 0, 1, 0, 0},
     {&__pyx_n_s_TypeError, __pyx_k_TypeError, sizeof(__pyx_k_TypeError), 0, 0, 1, 1},
-    {&__pyx_n_s__19, __pyx_k__19, sizeof(__pyx_k__19), 0, 0, 1, 1},
+    {&__pyx_n_s__23, __pyx_k__23, sizeof(__pyx_k__23), 0, 0, 1, 1},
+    {&__pyx_n_s__3, __pyx_k__3, sizeof(__pyx_k__3), 0, 0, 1, 1},
     {&__pyx_n_s_acos, __pyx_k_acos, sizeof(__pyx_k_acos), 0, 0, 1, 1},
-    {&__pyx_kp_u_acos_line_118, __pyx_k_acos_line_118, sizeof(__pyx_k_acos_line_118), 0, 1, 0, 0},
+    {&__pyx_n_s_arccos, __pyx_k_arccos, sizeof(__pyx_k_arccos), 0, 0, 1, 1},
+    {&__pyx_kp_u_arccos_line_187, __pyx_k_arccos_line_187, sizeof(__pyx_k_arccos_line_187), 0, 1, 0, 0},
+    {&__pyx_n_s_arcsin, __pyx_k_arcsin, sizeof(__pyx_k_arcsin), 0, 0, 1, 1},
+    {&__pyx_kp_u_arcsin_line_145, __pyx_k_arcsin_line_145, sizeof(__pyx_k_arcsin_line_145), 0, 1, 0, 0},
+    {&__pyx_n_s_arctan, __pyx_k_arctan, sizeof(__pyx_k_arctan), 0, 0, 1, 1},
+    {&__pyx_kp_u_arctan_line_225, __pyx_k_arctan_line_225, sizeof(__pyx_k_arctan_line_225), 0, 1, 0, 0},
+    {&__pyx_n_s_array, __pyx_k_array, sizeof(__pyx_k_array), 0, 0, 1, 1},
     {&__pyx_n_s_asin, __pyx_k_asin, sizeof(__pyx_k_asin), 0, 0, 1, 1},
-    {&__pyx_kp_u_asin_line_93, __pyx_k_asin_line_93, sizeof(__pyx_k_asin_line_93), 0, 1, 0, 0},
     {&__pyx_n_s_asyncio_coroutines, __pyx_k_asyncio_coroutines, sizeof(__pyx_k_asyncio_coroutines), 0, 0, 1, 1},
     {&__pyx_n_s_atan, __pyx_k_atan, sizeof(__pyx_k_atan), 0, 0, 1, 1},
-    {&__pyx_kp_u_atan_line_143, __pyx_k_atan_line_143, sizeof(__pyx_k_atan_line_143), 0, 1, 0, 0},
     {&__pyx_n_s_auto_diff, __pyx_k_auto_diff, sizeof(__pyx_k_auto_diff), 0, 0, 1, 1},
-    {&__pyx_kp_u_auto_diff_line_335, __pyx_k_auto_diff_line_335, sizeof(__pyx_k_auto_diff_line_335), 0, 1, 0, 0},
+    {&__pyx_kp_u_auto_diff_line_544, __pyx_k_auto_diff_line_544, sizeof(__pyx_k_auto_diff_line_544), 0, 1, 0, 0},
     {&__pyx_n_s_cline_in_traceback, __pyx_k_cline_in_traceback, sizeof(__pyx_k_cline_in_traceback), 0, 0, 1, 1},
     {&__pyx_n_s_cos, __pyx_k_cos, sizeof(__pyx_k_cos), 0, 0, 1, 1},
-    {&__pyx_kp_u_cos_line_45, __pyx_k_cos_line_45, sizeof(__pyx_k_cos_line_45), 0, 1, 0, 0},
+    {&__pyx_kp_u_cos_line_64, __pyx_k_cos_line_64, sizeof(__pyx_k_cos_line_64), 0, 1, 0, 0},
     {&__pyx_n_s_cosh, __pyx_k_cosh, sizeof(__pyx_k_cosh), 0, 0, 1, 1},
-    {&__pyx_kp_u_cosh_line_189, __pyx_k_cosh_line_189, sizeof(__pyx_k_cosh_line_189), 0, 1, 0, 0},
+    {&__pyx_kp_u_cosh_line_303, __pyx_k_cosh_line_303, sizeof(__pyx_k_cosh_line_303), 0, 1, 0, 0},
+    {&__pyx_n_s_dtype, __pyx_k_dtype, sizeof(__pyx_k_dtype), 0, 0, 1, 1},
     {&__pyx_n_s_dual, __pyx_k_dual, sizeof(__pyx_k_dual), 0, 0, 1, 1},
     {&__pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_k_dual_autodiff_x_autodiff_tools, sizeof(__pyx_k_dual_autodiff_x_autodiff_tools), 0, 0, 1, 1},
     {&__pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_k_dual_autodiff_x_autodiff_tools_p, sizeof(__pyx_k_dual_autodiff_x_autodiff_tools_p), 0, 0, 1, 0},
+    {&__pyx_n_s_dual_parts, __pyx_k_dual_parts, sizeof(__pyx_k_dual_parts), 0, 0, 1, 1},
     {&__pyx_n_s_exp, __pyx_k_exp, sizeof(__pyx_k_exp), 0, 0, 1, 1},
-    {&__pyx_kp_u_exp_line_235, __pyx_k_exp_line_235, sizeof(__pyx_k_exp_line_235), 0, 1, 0, 0},
+    {&__pyx_kp_u_exp_line_379, __pyx_k_exp_line_379, sizeof(__pyx_k_exp_line_379), 0, 1, 0, 0},
     {&__pyx_n_s_func, __pyx_k_func, sizeof(__pyx_k_func), 0, 0, 1, 1},
-    {&__pyx_kp_u_function_must_be_a_callable_func, __pyx_k_function_must_be_a_callable_func, sizeof(__pyx_k_function_must_be_a_callable_func), 0, 1, 0, 0},
+    {&__pyx_kp_u_func_must_be_a_callable_function, __pyx_k_func_must_be_a_callable_function, sizeof(__pyx_k_func_must_be_a_callable_function), 0, 1, 0, 0},
+    {&__pyx_n_s_funcs, __pyx_k_funcs, sizeof(__pyx_k_funcs), 0, 0, 1, 1},
     {&__pyx_n_s_import, __pyx_k_import, sizeof(__pyx_k_import), 0, 0, 1, 1},
+    {&__pyx_n_s_initializing, __pyx_k_initializing, sizeof(__pyx_k_initializing), 0, 0, 1, 1},
     {&__pyx_n_s_is_coroutine, __pyx_k_is_coroutine, sizeof(__pyx_k_is_coroutine), 0, 0, 1, 1},
+    {&__pyx_n_s_issubdtype, __pyx_k_issubdtype, sizeof(__pyx_k_issubdtype), 0, 0, 1, 1},
     {&__pyx_n_s_log, __pyx_k_log, sizeof(__pyx_k_log), 0, 0, 1, 1},
-    {&__pyx_kp_u_log_line_257, __pyx_k_log_line_257, sizeof(__pyx_k_log_line_257), 0, 1, 0, 0},
+    {&__pyx_kp_u_log_line_417, __pyx_k_log_line_417, sizeof(__pyx_k_log_line_417), 0, 1, 0, 0},
     {&__pyx_n_s_main, __pyx_k_main, sizeof(__pyx_k_main), 0, 0, 1, 1},
     {&__pyx_n_s_math, __pyx_k_math, sizeof(__pyx_k_math), 0, 0, 1, 1},
     {&__pyx_n_s_math_acos, __pyx_k_math_acos, sizeof(__pyx_k_math_acos), 0, 0, 1, 1},
@@ -6233,31 +8427,44 @@ static int __Pyx_CreateStringTabAndInitStrings(void) {
     {&__pyx_n_s_math_sqrt, __pyx_k_math_sqrt, sizeof(__pyx_k_math_sqrt), 0, 0, 1, 1},
     {&__pyx_n_s_math_tan, __pyx_k_math_tan, sizeof(__pyx_k_math_tan), 0, 0, 1, 1},
     {&__pyx_n_s_math_tanh, __pyx_k_math_tanh, sizeof(__pyx_k_math_tanh), 0, 0, 1, 1},
+    {&__pyx_n_s_multi_auto_diff, __pyx_k_multi_auto_diff, sizeof(__pyx_k_multi_auto_diff), 0, 0, 1, 1},
+    {&__pyx_kp_u_multi_auto_diff_line_604, __pyx_k_multi_auto_diff_line_604, sizeof(__pyx_k_multi_auto_diff_line_604), 0, 1, 0, 0},
     {&__pyx_n_s_n, __pyx_k_n, sizeof(__pyx_k_n), 0, 0, 1, 1},
     {&__pyx_n_s_name, __pyx_k_name, sizeof(__pyx_k_name), 0, 0, 1, 1},
+    {&__pyx_n_s_ndarray, __pyx_k_ndarray, sizeof(__pyx_k_ndarray), 0, 0, 1, 1},
+    {&__pyx_n_s_np, __pyx_k_np, sizeof(__pyx_k_np), 0, 0, 1, 1},
+    {&__pyx_n_s_number, __pyx_k_number, sizeof(__pyx_k_number), 0, 0, 1, 1},
+    {&__pyx_n_s_numpy, __pyx_k_numpy, sizeof(__pyx_k_numpy), 0, 0, 1, 1},
+    {&__pyx_kp_u_numpy_ndarray_must_contain_scala, __pyx_k_numpy_ndarray_must_contain_scala, sizeof(__pyx_k_numpy_ndarray_must_contain_scala), 0, 1, 0, 0},
     {&__pyx_n_s_pow, __pyx_k_pow, sizeof(__pyx_k_pow), 0, 0, 1, 1},
-    {&__pyx_kp_u_pow_line_308, __pyx_k_pow_line_308, sizeof(__pyx_k_pow_line_308), 0, 1, 0, 0},
+    {&__pyx_kp_u_pow_line_501, __pyx_k_pow_line_501, sizeof(__pyx_k_pow_line_501), 0, 1, 0, 0},
+    {&__pyx_n_s_power, __pyx_k_power, sizeof(__pyx_k_power), 0, 0, 1, 1},
+    {&__pyx_n_s_real, __pyx_k_real, sizeof(__pyx_k_real), 0, 0, 1, 1},
+    {&__pyx_n_s_real_parts, __pyx_k_real_parts, sizeof(__pyx_k_real_parts), 0, 0, 1, 1},
+    {&__pyx_n_s_results, __pyx_k_results, sizeof(__pyx_k_results), 0, 0, 1, 1},
     {&__pyx_n_s_sin, __pyx_k_sin, sizeof(__pyx_k_sin), 0, 0, 1, 1},
-    {&__pyx_kp_u_sin_line_23, __pyx_k_sin_line_23, sizeof(__pyx_k_sin_line_23), 0, 1, 0, 0},
+    {&__pyx_kp_u_sin_line_25, __pyx_k_sin_line_25, sizeof(__pyx_k_sin_line_25), 0, 1, 0, 0},
     {&__pyx_n_s_sinh, __pyx_k_sinh, sizeof(__pyx_k_sinh), 0, 0, 1, 1},
-    {&__pyx_kp_u_sinh_line_165, __pyx_k_sinh_line_165, sizeof(__pyx_k_sinh_line_165), 0, 1, 0, 0},
+    {&__pyx_kp_u_sinh_line_264, __pyx_k_sinh_line_264, sizeof(__pyx_k_sinh_line_264), 0, 1, 0, 0},
+    {&__pyx_n_s_spec, __pyx_k_spec, sizeof(__pyx_k_spec), 0, 0, 1, 1},
     {&__pyx_n_s_sqrt, __pyx_k_sqrt, sizeof(__pyx_k_sqrt), 0, 0, 1, 1},
-    {&__pyx_kp_u_sqrt_line_283, __pyx_k_sqrt_line_283, sizeof(__pyx_k_sqrt_line_283), 0, 1, 0, 0},
+    {&__pyx_kp_u_sqrt_line_459, __pyx_k_sqrt_line_459, sizeof(__pyx_k_sqrt_line_459), 0, 1, 0, 0},
     {&__pyx_n_s_tan, __pyx_k_tan, sizeof(__pyx_k_tan), 0, 0, 1, 1},
-    {&__pyx_kp_u_tan_line_67, __pyx_k_tan_line_67, sizeof(__pyx_k_tan_line_67), 0, 1, 0, 0},
+    {&__pyx_kp_u_tan_line_103, __pyx_k_tan_line_103, sizeof(__pyx_k_tan_line_103), 0, 1, 0, 0},
     {&__pyx_n_s_tanh, __pyx_k_tanh, sizeof(__pyx_k_tanh), 0, 0, 1, 1},
-    {&__pyx_kp_u_tanh_line_211, __pyx_k_tanh_line_211, sizeof(__pyx_k_tanh_line_211), 0, 1, 0, 0},
+    {&__pyx_kp_u_tanh_line_341, __pyx_k_tanh_line_341, sizeof(__pyx_k_tanh_line_341), 0, 1, 0, 0},
     {&__pyx_n_s_test, __pyx_k_test, sizeof(__pyx_k_test), 0, 0, 1, 1},
     {&__pyx_n_s_value, __pyx_k_value, sizeof(__pyx_k_value), 0, 0, 1, 1},
     {&__pyx_n_s_x, __pyx_k_x, sizeof(__pyx_k_x), 0, 0, 1, 1},
     {&__pyx_kp_u_x_must_be_a_scalar_number_float, __pyx_k_x_must_be_a_scalar_number_float, sizeof(__pyx_k_x_must_be_a_scalar_number_float), 0, 1, 0, 0},
+    {&__pyx_n_s_xi, __pyx_k_xi, sizeof(__pyx_k_xi), 0, 0, 1, 1},
     {0, 0, 0, 0, 0, 0, 0}
   };
   return __Pyx_InitStrings(__pyx_string_tab);
 }
 /* #### Code section: cached_builtins ### */
 static CYTHON_SMALL_CODE int __Pyx_InitCachedBuiltins(void) {
-  __pyx_builtin_TypeError = __Pyx_GetBuiltinName(__pyx_n_s_TypeError); if (!__pyx_builtin_TypeError) __PYX_ERR(0, 357, __pyx_L1_error)
+  __pyx_builtin_TypeError = __Pyx_GetBuiltinName(__pyx_n_s_TypeError); if (!__pyx_builtin_TypeError) __PYX_ERR(0, 572, __pyx_L1_error)
   return 0;
   __pyx_L1_error:;
   return -1;
@@ -6268,140 +8475,163 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("__Pyx_InitCachedConstants", 0);
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":23
+  /* "dual_autodiff_x/autodiff_tools.pyx":589
+ *         # Checks that is x is a numpy array, it contains scalar values
+ *         if not np.issubdtype(x.dtype, np.number):
+ *             raise TypeError("numpy.ndarray must contain scalar values (float/int).")             # <<<<<<<<<<<<<<
+ * 
+ *         # Compute the real and dual parts
+ */
+  __pyx_tuple__2 = PyTuple_Pack(1, __pyx_kp_u_numpy_ndarray_must_contain_scala); if (unlikely(!__pyx_tuple__2)) __PYX_ERR(0, 589, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_tuple__2);
+  __Pyx_GIVEREF(__pyx_tuple__2);
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":25
  * 
  * # Call Dual's sin() method
  * def sin(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the sine of a number or a Dual number.
+ *     Compute the sin of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_tuple__2 = PyTuple_Pack(1, __pyx_n_s_x); if (unlikely(!__pyx_tuple__2)) __PYX_ERR(0, 23, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_tuple__2);
-  __Pyx_GIVEREF(__pyx_tuple__2);
-  __pyx_codeobj__3 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_sin, 23, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__3)) __PYX_ERR(0, 23, __pyx_L1_error)
+  __pyx_tuple__4 = PyTuple_Pack(1, __pyx_n_s_x); if (unlikely(!__pyx_tuple__4)) __PYX_ERR(0, 25, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_tuple__4);
+  __Pyx_GIVEREF(__pyx_tuple__4);
+  __pyx_codeobj__5 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__4, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_sin, 25, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__5)) __PYX_ERR(0, 25, __pyx_L1_error)
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":45
+  /* "dual_autodiff_x/autodiff_tools.pyx":64
  * 
  * # Call Dual's cos() method
  * def cos(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the cosine of a number or a Dual number.
+ *     Compute the cos of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_codeobj__4 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_cos, 45, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__4)) __PYX_ERR(0, 45, __pyx_L1_error)
+  __pyx_codeobj__6 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__4, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_cos, 64, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__6)) __PYX_ERR(0, 64, __pyx_L1_error)
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":67
- * 
+  /* "dual_autodiff_x/autodiff_tools.pyx":103
  * # Call Dual's tan() method
+ * # Errors thrown by Dual class (dual.py) automatically
  * def tan(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the tangent of a number or a Dual number.
+ *     Compute the tangent of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_codeobj__5 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_tan, 67, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__5)) __PYX_ERR(0, 67, __pyx_L1_error)
+  __pyx_codeobj__7 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__4, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_tan, 103, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__7)) __PYX_ERR(0, 103, __pyx_L1_error)
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":93
+  /* "dual_autodiff_x/autodiff_tools.pyx":145
  * # Call Dual's arcsin() method
- * 
- * def asin(x):             # <<<<<<<<<<<<<<
+ * # Errors thrown by Dual class (dual.py) automatically
+ * def arcsin(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the arcsine of a number or a Dual number.
+ *     Compute the arcsine of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_codeobj__6 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_asin, 93, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__6)) __PYX_ERR(0, 93, __pyx_L1_error)
+  __pyx_codeobj__8 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__4, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_arcsin, 145, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__8)) __PYX_ERR(0, 145, __pyx_L1_error)
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":118
- * 
+  /* "dual_autodiff_x/autodiff_tools.pyx":187
  * # Call Dual's arccos() method
- * def acos(x):             # <<<<<<<<<<<<<<
+ * # Errors thrown by Dual class (dual.py) automatically
+ * def arccos(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the arccosine of a number or a Dual number.
+ *     Compute the arccosine of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_codeobj__7 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_acos, 118, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__7)) __PYX_ERR(0, 118, __pyx_L1_error)
+  __pyx_codeobj__9 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__4, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_arccos, 187, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__9)) __PYX_ERR(0, 187, __pyx_L1_error)
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":143
+  /* "dual_autodiff_x/autodiff_tools.pyx":225
  * 
  * # Call Dual's arctan() method
- * def atan(x):             # <<<<<<<<<<<<<<
+ * def arctan(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the arctangent of a number or a Dual number.
+ *     Compute the arctangent of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_codeobj__8 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_atan, 143, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__8)) __PYX_ERR(0, 143, __pyx_L1_error)
+  __pyx_codeobj__10 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__4, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_arctan, 225, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__10)) __PYX_ERR(0, 225, __pyx_L1_error)
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":165
+  /* "dual_autodiff_x/autodiff_tools.pyx":264
  * 
  * # Call Dual's sinh() method
  * def sinh(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the hyperbolic sine of a number or a Dual number.
+ *     Compute the hyperbolic sine of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_codeobj__9 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_sinh, 165, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__9)) __PYX_ERR(0, 165, __pyx_L1_error)
+  __pyx_codeobj__11 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__4, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_sinh, 264, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__11)) __PYX_ERR(0, 264, __pyx_L1_error)
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":189
- * # Call Dual's cosh() method
+  /* "dual_autodiff_x/autodiff_tools.pyx":303
  * 
+ * # Call Dual's cosh() method
  * def cosh(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the hyperbolic cosine of a number or a Dual number.
+ *     Compute the hyperbolic cosine of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_codeobj__10 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_cosh, 189, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__10)) __PYX_ERR(0, 189, __pyx_L1_error)
+  __pyx_codeobj__12 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__4, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_cosh, 303, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__12)) __PYX_ERR(0, 303, __pyx_L1_error)
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":211
+  /* "dual_autodiff_x/autodiff_tools.pyx":341
  * 
  * # Call Dual's tanh() method
  * def tanh(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the hyperbolic tangent of a number or a Dual number.
+ *     Compute the hyperbolic tangent of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_codeobj__11 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_tanh, 211, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__11)) __PYX_ERR(0, 211, __pyx_L1_error)
+  __pyx_codeobj__13 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__4, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_tanh, 341, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__13)) __PYX_ERR(0, 341, __pyx_L1_error)
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":235
+  /* "dual_autodiff_x/autodiff_tools.pyx":379
  * 
- * 
+ * # Call Dual's exp() method
  * def exp(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the exponential of a number or a Dual number.
+ *     Compute the exponential of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_codeobj__12 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_exp, 235, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__12)) __PYX_ERR(0, 235, __pyx_L1_error)
+  __pyx_codeobj__14 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__4, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_exp, 379, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__14)) __PYX_ERR(0, 379, __pyx_L1_error)
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":257
- * 
+  /* "dual_autodiff_x/autodiff_tools.pyx":417
  * # Call Dual's log() method
+ * # Errors thrown by Dual class (dual.py) automatically
  * def log(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the natural logarithm of a number or a Dual number.
+ *     Compute the natural logarithm of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_codeobj__13 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_log, 257, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__13)) __PYX_ERR(0, 257, __pyx_L1_error)
+  __pyx_codeobj__15 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__4, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_log, 417, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__15)) __PYX_ERR(0, 417, __pyx_L1_error)
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":283
+  /* "dual_autodiff_x/autodiff_tools.pyx":459
  * # Call Dual's sqrt() method
- * 
+ * # Errors thrown by Dual class (dual.py) automatically
  * def sqrt(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the square root of a number or a Dual number.
+ *     Compute the square root of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_codeobj__14 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__2, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_sqrt, 283, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__14)) __PYX_ERR(0, 283, __pyx_L1_error)
+  __pyx_codeobj__16 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 1, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__4, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_sqrt, 459, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__16)) __PYX_ERR(0, 459, __pyx_L1_error)
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":308
- * 
+  /* "dual_autodiff_x/autodiff_tools.pyx":501
  * # Call Dual's pow() method
+ * # Errors thrown by Dual class (dual.py) automatically
  * def pow(x, n):             # <<<<<<<<<<<<<<
  *     """
- *     Compute a number or a Dual number raised to a power.
+ *     Compute a number, a Dual number, or a numpy array of Dual numbers raised to a power.
  */
-  __pyx_tuple__15 = PyTuple_Pack(2, __pyx_n_s_x, __pyx_n_s_n); if (unlikely(!__pyx_tuple__15)) __PYX_ERR(0, 308, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_tuple__15);
-  __Pyx_GIVEREF(__pyx_tuple__15);
-  __pyx_codeobj__16 = (PyObject*)__Pyx_PyCode_New(2, 0, 0, 2, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__15, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_pow, 308, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__16)) __PYX_ERR(0, 308, __pyx_L1_error)
+  __pyx_tuple__17 = PyTuple_Pack(2, __pyx_n_s_x, __pyx_n_s_n); if (unlikely(!__pyx_tuple__17)) __PYX_ERR(0, 501, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_tuple__17);
+  __Pyx_GIVEREF(__pyx_tuple__17);
+  __pyx_codeobj__18 = (PyObject*)__Pyx_PyCode_New(2, 0, 0, 2, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__17, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_pow, 501, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__18)) __PYX_ERR(0, 501, __pyx_L1_error)
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":335
+  /* "dual_autodiff_x/autodiff_tools.pyx":544
  * # Evaluates a function on a dual number and returns the dual part of result
- * # Corrosponds to derivative - ie preforms automatic differentiation
+ * # Corresponds to derivative - ie performs automatic differentiation
  * def auto_diff(func, x):             # <<<<<<<<<<<<<<
  *     """
  *     Evaluates the derivative of a function f at x using Dual number: x + .
  */
-  __pyx_tuple__17 = PyTuple_Pack(3, __pyx_n_s_func, __pyx_n_s_x, __pyx_n_s_value); if (unlikely(!__pyx_tuple__17)) __PYX_ERR(0, 335, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_tuple__17);
-  __Pyx_GIVEREF(__pyx_tuple__17);
-  __pyx_codeobj__18 = (PyObject*)__Pyx_PyCode_New(2, 0, 0, 3, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__17, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_auto_diff, 335, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__18)) __PYX_ERR(0, 335, __pyx_L1_error)
+  __pyx_tuple__19 = PyTuple_Pack(7, __pyx_n_s_func, __pyx_n_s_x, __pyx_n_s_value, __pyx_n_s_real_parts, __pyx_n_s_dual_parts, __pyx_n_s_xi, __pyx_n_s_xi); if (unlikely(!__pyx_tuple__19)) __PYX_ERR(0, 544, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_tuple__19);
+  __Pyx_GIVEREF(__pyx_tuple__19);
+  __pyx_codeobj__20 = (PyObject*)__Pyx_PyCode_New(2, 0, 0, 7, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__19, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_auto_diff, 544, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__20)) __PYX_ERR(0, 544, __pyx_L1_error)
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":604
+ * # Returns a list of tuples, each containing the real and dual parts of the result for each function
+ * # uses auto_diff to evaluate each function
+ * def multi_auto_diff(funcs, x):             # <<<<<<<<<<<<<<
+ *     """
+ *     Evaluates the derivatives of multiple functions at x using Dual number: x + .
+ */
+  __pyx_tuple__21 = PyTuple_Pack(4, __pyx_n_s_funcs, __pyx_n_s_x, __pyx_n_s_results, __pyx_n_s_func); if (unlikely(!__pyx_tuple__21)) __PYX_ERR(0, 604, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_tuple__21);
+  __Pyx_GIVEREF(__pyx_tuple__21);
+  __pyx_codeobj__22 = (PyObject*)__Pyx_PyCode_New(2, 0, 0, 4, 0, CO_OPTIMIZED|CO_NEWLOCALS, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__21, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_dual_autodiff_x_autodiff_tools_p, __pyx_n_s_multi_auto_diff, 604, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__22)) __PYX_ERR(0, 604, __pyx_L1_error)
   __Pyx_RefNannyFinishContext();
   return 0;
   __pyx_L1_error:;
@@ -6770,8 +9000,8 @@ if (!__Pyx_RefNanny) {
 
   /* "dual_autodiff_x/autodiff_tools.pyx":1
  * from .dual import Dual             # <<<<<<<<<<<<<<
+ * import numpy as np
  * from math import (
- *     sin as math_sin,
  */
   __pyx_t_2 = PyList_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 1, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
@@ -6787,307 +9017,332 @@ if (!__Pyx_RefNanny) {
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":3
+  /* "dual_autodiff_x/autodiff_tools.pyx":2
  * from .dual import Dual
+ * import numpy as np             # <<<<<<<<<<<<<<
+ * from math import (
+ *     sin as math_sin,
+ */
+  __pyx_t_3 = __Pyx_ImportDottedModule(__pyx_n_s_numpy, NULL); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 2, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_np, __pyx_t_3) < 0) __PYX_ERR(0, 2, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":4
+ * import numpy as np
  * from math import (
  *     sin as math_sin,             # <<<<<<<<<<<<<<
  *     cos as math_cos,
  *     tan as math_tan,
  */
-  __pyx_t_3 = PyList_New(13); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 3, __pyx_L1_error)
+  __pyx_t_3 = PyList_New(13); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 4, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __Pyx_INCREF(__pyx_n_s_sin);
   __Pyx_GIVEREF(__pyx_n_s_sin);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 0, __pyx_n_s_sin)) __PYX_ERR(0, 3, __pyx_L1_error);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 0, __pyx_n_s_sin)) __PYX_ERR(0, 4, __pyx_L1_error);
   __Pyx_INCREF(__pyx_n_s_cos);
   __Pyx_GIVEREF(__pyx_n_s_cos);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 1, __pyx_n_s_cos)) __PYX_ERR(0, 3, __pyx_L1_error);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 1, __pyx_n_s_cos)) __PYX_ERR(0, 4, __pyx_L1_error);
   __Pyx_INCREF(__pyx_n_s_tan);
   __Pyx_GIVEREF(__pyx_n_s_tan);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 2, __pyx_n_s_tan)) __PYX_ERR(0, 3, __pyx_L1_error);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 2, __pyx_n_s_tan)) __PYX_ERR(0, 4, __pyx_L1_error);
   __Pyx_INCREF(__pyx_n_s_asin);
   __Pyx_GIVEREF(__pyx_n_s_asin);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 3, __pyx_n_s_asin)) __PYX_ERR(0, 3, __pyx_L1_error);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 3, __pyx_n_s_asin)) __PYX_ERR(0, 4, __pyx_L1_error);
   __Pyx_INCREF(__pyx_n_s_acos);
   __Pyx_GIVEREF(__pyx_n_s_acos);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 4, __pyx_n_s_acos)) __PYX_ERR(0, 3, __pyx_L1_error);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 4, __pyx_n_s_acos)) __PYX_ERR(0, 4, __pyx_L1_error);
   __Pyx_INCREF(__pyx_n_s_atan);
   __Pyx_GIVEREF(__pyx_n_s_atan);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 5, __pyx_n_s_atan)) __PYX_ERR(0, 3, __pyx_L1_error);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 5, __pyx_n_s_atan)) __PYX_ERR(0, 4, __pyx_L1_error);
   __Pyx_INCREF(__pyx_n_s_sinh);
   __Pyx_GIVEREF(__pyx_n_s_sinh);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 6, __pyx_n_s_sinh)) __PYX_ERR(0, 3, __pyx_L1_error);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 6, __pyx_n_s_sinh)) __PYX_ERR(0, 4, __pyx_L1_error);
   __Pyx_INCREF(__pyx_n_s_cosh);
   __Pyx_GIVEREF(__pyx_n_s_cosh);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 7, __pyx_n_s_cosh)) __PYX_ERR(0, 3, __pyx_L1_error);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 7, __pyx_n_s_cosh)) __PYX_ERR(0, 4, __pyx_L1_error);
   __Pyx_INCREF(__pyx_n_s_tanh);
   __Pyx_GIVEREF(__pyx_n_s_tanh);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 8, __pyx_n_s_tanh)) __PYX_ERR(0, 3, __pyx_L1_error);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 8, __pyx_n_s_tanh)) __PYX_ERR(0, 4, __pyx_L1_error);
   __Pyx_INCREF(__pyx_n_s_exp);
   __Pyx_GIVEREF(__pyx_n_s_exp);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 9, __pyx_n_s_exp)) __PYX_ERR(0, 3, __pyx_L1_error);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 9, __pyx_n_s_exp)) __PYX_ERR(0, 4, __pyx_L1_error);
   __Pyx_INCREF(__pyx_n_s_log);
   __Pyx_GIVEREF(__pyx_n_s_log);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 10, __pyx_n_s_log)) __PYX_ERR(0, 3, __pyx_L1_error);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 10, __pyx_n_s_log)) __PYX_ERR(0, 4, __pyx_L1_error);
   __Pyx_INCREF(__pyx_n_s_sqrt);
   __Pyx_GIVEREF(__pyx_n_s_sqrt);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 11, __pyx_n_s_sqrt)) __PYX_ERR(0, 3, __pyx_L1_error);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 11, __pyx_n_s_sqrt)) __PYX_ERR(0, 4, __pyx_L1_error);
   __Pyx_INCREF(__pyx_n_s_pow);
   __Pyx_GIVEREF(__pyx_n_s_pow);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 12, __pyx_n_s_pow)) __PYX_ERR(0, 3, __pyx_L1_error);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 12, __pyx_n_s_pow)) __PYX_ERR(0, 4, __pyx_L1_error);
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":2
+  /* "dual_autodiff_x/autodiff_tools.pyx":3
  * from .dual import Dual
+ * import numpy as np
  * from math import (             # <<<<<<<<<<<<<<
  *     sin as math_sin,
  *     cos as math_cos,
  */
-  __pyx_t_2 = __Pyx_Import(__pyx_n_s_math, __pyx_t_3, 0); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 2, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_Import(__pyx_n_s_math, __pyx_t_3, 0); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_sin); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 2, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_sin); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_sin, __pyx_t_3) < 0) __PYX_ERR(0, 3, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_sin, __pyx_t_3) < 0) __PYX_ERR(0, 4, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_cos); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 2, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_cos); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_cos, __pyx_t_3) < 0) __PYX_ERR(0, 4, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_cos, __pyx_t_3) < 0) __PYX_ERR(0, 5, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_tan); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 2, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_tan); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_tan, __pyx_t_3) < 0) __PYX_ERR(0, 5, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_tan, __pyx_t_3) < 0) __PYX_ERR(0, 6, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_asin); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 2, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_asin); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_asin, __pyx_t_3) < 0) __PYX_ERR(0, 6, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_asin, __pyx_t_3) < 0) __PYX_ERR(0, 7, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_acos); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 2, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_acos); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_acos, __pyx_t_3) < 0) __PYX_ERR(0, 7, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_acos, __pyx_t_3) < 0) __PYX_ERR(0, 8, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_atan); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 2, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_atan); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_atan, __pyx_t_3) < 0) __PYX_ERR(0, 8, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_atan, __pyx_t_3) < 0) __PYX_ERR(0, 9, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_sinh); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 2, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_sinh); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_sinh, __pyx_t_3) < 0) __PYX_ERR(0, 9, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_sinh, __pyx_t_3) < 0) __PYX_ERR(0, 10, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_cosh); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 2, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_cosh); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_cosh, __pyx_t_3) < 0) __PYX_ERR(0, 10, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_cosh, __pyx_t_3) < 0) __PYX_ERR(0, 11, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_tanh); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 2, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_tanh); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_tanh, __pyx_t_3) < 0) __PYX_ERR(0, 11, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_tanh, __pyx_t_3) < 0) __PYX_ERR(0, 12, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_exp); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 2, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_exp); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_exp, __pyx_t_3) < 0) __PYX_ERR(0, 12, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_exp, __pyx_t_3) < 0) __PYX_ERR(0, 13, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_log); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 2, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_log); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_log, __pyx_t_3) < 0) __PYX_ERR(0, 13, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_log, __pyx_t_3) < 0) __PYX_ERR(0, 14, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_sqrt); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 2, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_sqrt); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_sqrt, __pyx_t_3) < 0) __PYX_ERR(0, 14, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_sqrt, __pyx_t_3) < 0) __PYX_ERR(0, 15, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_pow); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 2, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_pow); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_pow, __pyx_t_3) < 0) __PYX_ERR(0, 15, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_math_pow, __pyx_t_3) < 0) __PYX_ERR(0, 16, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":23
+  /* "dual_autodiff_x/autodiff_tools.pyx":25
  * 
  * # Call Dual's sin() method
  * def sin(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the sine of a number or a Dual number.
+ *     Compute the sin of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_1sin, 0, __pyx_n_s_sin, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__3)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 23, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_1sin, 0, __pyx_n_s_sin, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__5)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 25, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_sin, __pyx_t_2) < 0) __PYX_ERR(0, 23, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_sin, __pyx_t_2) < 0) __PYX_ERR(0, 25, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":45
+  /* "dual_autodiff_x/autodiff_tools.pyx":64
  * 
  * # Call Dual's cos() method
  * def cos(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the cosine of a number or a Dual number.
+ *     Compute the cos of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_3cos, 0, __pyx_n_s_cos, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__4)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 45, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_3cos, 0, __pyx_n_s_cos, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__6)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 64, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_cos, __pyx_t_2) < 0) __PYX_ERR(0, 45, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_cos, __pyx_t_2) < 0) __PYX_ERR(0, 64, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":67
- * 
+  /* "dual_autodiff_x/autodiff_tools.pyx":103
  * # Call Dual's tan() method
+ * # Errors thrown by Dual class (dual.py) automatically
  * def tan(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the tangent of a number or a Dual number.
+ *     Compute the tangent of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_5tan, 0, __pyx_n_s_tan, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__5)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 67, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_5tan, 0, __pyx_n_s_tan, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__7)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 103, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_tan, __pyx_t_2) < 0) __PYX_ERR(0, 67, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_tan, __pyx_t_2) < 0) __PYX_ERR(0, 103, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":93
+  /* "dual_autodiff_x/autodiff_tools.pyx":145
  * # Call Dual's arcsin() method
- * 
- * def asin(x):             # <<<<<<<<<<<<<<
+ * # Errors thrown by Dual class (dual.py) automatically
+ * def arcsin(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the arcsine of a number or a Dual number.
+ *     Compute the arcsine of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_7asin, 0, __pyx_n_s_asin, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__6)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 93, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_7arcsin, 0, __pyx_n_s_arcsin, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__8)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 145, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_asin, __pyx_t_2) < 0) __PYX_ERR(0, 93, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_arcsin, __pyx_t_2) < 0) __PYX_ERR(0, 145, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":118
- * 
+  /* "dual_autodiff_x/autodiff_tools.pyx":187
  * # Call Dual's arccos() method
- * def acos(x):             # <<<<<<<<<<<<<<
+ * # Errors thrown by Dual class (dual.py) automatically
+ * def arccos(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the arccosine of a number or a Dual number.
+ *     Compute the arccosine of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_9acos, 0, __pyx_n_s_acos, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__7)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 118, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_9arccos, 0, __pyx_n_s_arccos, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__9)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 187, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_acos, __pyx_t_2) < 0) __PYX_ERR(0, 118, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_arccos, __pyx_t_2) < 0) __PYX_ERR(0, 187, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":143
+  /* "dual_autodiff_x/autodiff_tools.pyx":225
  * 
  * # Call Dual's arctan() method
- * def atan(x):             # <<<<<<<<<<<<<<
+ * def arctan(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the arctangent of a number or a Dual number.
+ *     Compute the arctangent of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_11atan, 0, __pyx_n_s_atan, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__8)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 143, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_11arctan, 0, __pyx_n_s_arctan, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__10)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 225, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_atan, __pyx_t_2) < 0) __PYX_ERR(0, 143, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_arctan, __pyx_t_2) < 0) __PYX_ERR(0, 225, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":165
+  /* "dual_autodiff_x/autodiff_tools.pyx":264
  * 
  * # Call Dual's sinh() method
  * def sinh(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the hyperbolic sine of a number or a Dual number.
+ *     Compute the hyperbolic sine of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_13sinh, 0, __pyx_n_s_sinh, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__9)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 165, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_13sinh, 0, __pyx_n_s_sinh, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__11)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 264, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_sinh, __pyx_t_2) < 0) __PYX_ERR(0, 165, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_sinh, __pyx_t_2) < 0) __PYX_ERR(0, 264, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":189
- * # Call Dual's cosh() method
+  /* "dual_autodiff_x/autodiff_tools.pyx":303
  * 
+ * # Call Dual's cosh() method
  * def cosh(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the hyperbolic cosine of a number or a Dual number.
+ *     Compute the hyperbolic cosine of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_15cosh, 0, __pyx_n_s_cosh, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__10)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 189, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_15cosh, 0, __pyx_n_s_cosh, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__12)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 303, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_cosh, __pyx_t_2) < 0) __PYX_ERR(0, 189, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_cosh, __pyx_t_2) < 0) __PYX_ERR(0, 303, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":211
+  /* "dual_autodiff_x/autodiff_tools.pyx":341
  * 
  * # Call Dual's tanh() method
  * def tanh(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the hyperbolic tangent of a number or a Dual number.
+ *     Compute the hyperbolic tangent of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_17tanh, 0, __pyx_n_s_tanh, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__11)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 211, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_17tanh, 0, __pyx_n_s_tanh, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__13)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 341, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_tanh, __pyx_t_2) < 0) __PYX_ERR(0, 211, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_tanh, __pyx_t_2) < 0) __PYX_ERR(0, 341, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":235
+  /* "dual_autodiff_x/autodiff_tools.pyx":379
  * 
- * 
+ * # Call Dual's exp() method
  * def exp(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the exponential of a number or a Dual number.
+ *     Compute the exponential of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_19exp, 0, __pyx_n_s_exp, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__12)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 235, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_19exp, 0, __pyx_n_s_exp, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__14)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 379, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_exp, __pyx_t_2) < 0) __PYX_ERR(0, 235, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_exp, __pyx_t_2) < 0) __PYX_ERR(0, 379, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":257
- * 
+  /* "dual_autodiff_x/autodiff_tools.pyx":417
  * # Call Dual's log() method
+ * # Errors thrown by Dual class (dual.py) automatically
  * def log(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the natural logarithm of a number or a Dual number.
+ *     Compute the natural logarithm of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_21log, 0, __pyx_n_s_log, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__13)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 257, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_21log, 0, __pyx_n_s_log, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__15)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 417, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_log, __pyx_t_2) < 0) __PYX_ERR(0, 257, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_log, __pyx_t_2) < 0) __PYX_ERR(0, 417, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":283
+  /* "dual_autodiff_x/autodiff_tools.pyx":459
  * # Call Dual's sqrt() method
- * 
+ * # Errors thrown by Dual class (dual.py) automatically
  * def sqrt(x):             # <<<<<<<<<<<<<<
  *     """
- *     Compute the square root of a number or a Dual number.
+ *     Compute the square root of a number, a Dual number, or a numpy array of Dual numbers.
  */
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_23sqrt, 0, __pyx_n_s_sqrt, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__14)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 283, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_23sqrt, 0, __pyx_n_s_sqrt, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__16)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 459, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_sqrt, __pyx_t_2) < 0) __PYX_ERR(0, 283, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_sqrt, __pyx_t_2) < 0) __PYX_ERR(0, 459, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":308
- * 
+  /* "dual_autodiff_x/autodiff_tools.pyx":501
  * # Call Dual's pow() method
+ * # Errors thrown by Dual class (dual.py) automatically
  * def pow(x, n):             # <<<<<<<<<<<<<<
  *     """
- *     Compute a number or a Dual number raised to a power.
+ *     Compute a number, a Dual number, or a numpy array of Dual numbers raised to a power.
  */
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_25pow, 0, __pyx_n_s_pow, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__16)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 308, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_25pow, 0, __pyx_n_s_pow, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__18)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 501, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_pow, __pyx_t_2) < 0) __PYX_ERR(0, 308, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_pow, __pyx_t_2) < 0) __PYX_ERR(0, 501, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "dual_autodiff_x/autodiff_tools.pyx":335
+  /* "dual_autodiff_x/autodiff_tools.pyx":544
  * # Evaluates a function on a dual number and returns the dual part of result
- * # Corrosponds to derivative - ie preforms automatic differentiation
+ * # Corresponds to derivative - ie performs automatic differentiation
  * def auto_diff(func, x):             # <<<<<<<<<<<<<<
  *     """
  *     Evaluates the derivative of a function f at x using Dual number: x + .
  */
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_27auto_diff, 0, __pyx_n_s_auto_diff, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__18)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 335, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_27auto_diff, 0, __pyx_n_s_auto_diff, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__20)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 544, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_auto_diff, __pyx_t_2) < 0) __PYX_ERR(0, 335, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_auto_diff, __pyx_t_2) < 0) __PYX_ERR(0, 544, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+
+  /* "dual_autodiff_x/autodiff_tools.pyx":604
+ * # Returns a list of tuples, each containing the real and dual parts of the result for each function
+ * # uses auto_diff to evaluate each function
+ * def multi_auto_diff(funcs, x):             # <<<<<<<<<<<<<<
+ *     """
+ *     Evaluates the derivatives of multiple functions at x using Dual number: x + .
+ */
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_15dual_autodiff_x_14autodiff_tools_29multi_auto_diff, 0, __pyx_n_s_multi_auto_diff, NULL, __pyx_n_s_dual_autodiff_x_autodiff_tools, __pyx_d, ((PyObject *)__pyx_codeobj__22)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 604, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_multi_auto_diff, __pyx_t_2) < 0) __PYX_ERR(0, 604, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
   /* "dual_autodiff_x/autodiff_tools.pyx":1
  * from .dual import Dual             # <<<<<<<<<<<<<<
+ * import numpy as np
  * from math import (
- *     sin as math_sin,
  */
-  __pyx_t_2 = __Pyx_PyDict_NewPresized(14); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 1, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_PyDict_NewPresized(15); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 1, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_sin_line_23, __pyx_kp_u_Compute_the_sine_of_a_number_or) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
-  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_cos_line_45, __pyx_kp_u_Compute_the_cosine_of_a_number) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
-  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_tan_line_67, __pyx_kp_u_Compute_the_tangent_of_a_number) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
-  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_asin_line_93, __pyx_kp_u_Compute_the_arcsine_of_a_number) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
-  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_acos_line_118, __pyx_kp_u_Compute_the_arccosine_of_a_numb) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
-  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_atan_line_143, __pyx_kp_u_Compute_the_arctangent_of_a_num) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
-  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_sinh_line_165, __pyx_kp_u_Compute_the_hyperbolic_sine_of) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
-  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_cosh_line_189, __pyx_kp_u_Compute_the_hyperbolic_cosine_o) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
-  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_tanh_line_211, __pyx_kp_u_Compute_the_hyperbolic_tangent) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
-  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_exp_line_235, __pyx_kp_u_Compute_the_exponential_of_a_nu) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
-  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_log_line_257, __pyx_kp_u_Compute_the_natural_logarithm_o) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
-  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_sqrt_line_283, __pyx_kp_u_Compute_the_square_root_of_a_nu) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
-  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_pow_line_308, __pyx_kp_u_Compute_a_number_or_a_Dual_numb) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
-  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_auto_diff_line_335, __pyx_kp_u_Evaluates_the_derivative_of_a_f) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_sin_line_25, __pyx_kp_u_Compute_the_sin_of_a_number_a_D) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_cos_line_64, __pyx_kp_u_Compute_the_cos_of_a_number_a_D) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_tan_line_103, __pyx_kp_u_Compute_the_tangent_of_a_number) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_arcsin_line_145, __pyx_kp_u_Compute_the_arcsine_of_a_number) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_arccos_line_187, __pyx_kp_u_Compute_the_arccosine_of_a_numb) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_arctan_line_225, __pyx_kp_u_Compute_the_arctangent_of_a_num) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_sinh_line_264, __pyx_kp_u_Compute_the_hyperbolic_sine_of) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_cosh_line_303, __pyx_kp_u_Compute_the_hyperbolic_cosine_o) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_tanh_line_341, __pyx_kp_u_Compute_the_hyperbolic_tangent) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_exp_line_379, __pyx_kp_u_Compute_the_exponential_of_a_nu) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_log_line_417, __pyx_kp_u_Compute_the_natural_logarithm_o) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_sqrt_line_459, __pyx_kp_u_Compute_the_square_root_of_a_nu) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_pow_line_501, __pyx_kp_u_Compute_a_number_a_Dual_number) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_auto_diff_line_544, __pyx_kp_u_Evaluates_the_derivative_of_a_f) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_2, __pyx_kp_u_multi_auto_diff_line_604, __pyx_kp_u_Evaluates_the_derivatives_of_mu) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_test, __pyx_t_2) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
@@ -8296,6 +10551,155 @@ bad:
 }
 #endif
 
+/* pybytes_as_double */
+static double __Pyx_SlowPyString_AsDouble(PyObject *obj) {
+    PyObject *float_value;
+#if PY_MAJOR_VERSION >= 3
+    float_value = PyFloat_FromString(obj);
+#else
+    float_value = PyFloat_FromString(obj, 0);
+#endif
+    if (likely(float_value)) {
+#if CYTHON_ASSUME_SAFE_MACROS
+        double value = PyFloat_AS_DOUBLE(float_value);
+#else
+        double value = PyFloat_AsDouble(float_value);
+#endif
+        Py_DECREF(float_value);
+        return value;
+    }
+    return (double)-1;
+}
+static const char* __Pyx__PyBytes_AsDouble_Copy(const char* start, char* buffer, Py_ssize_t length) {
+    int last_was_punctuation = 1;
+    Py_ssize_t i;
+    for (i=0; i < length; i++) {
+        char chr = start[i];
+        int is_punctuation = (chr == '_') | (chr == '.') | (chr == 'e') | (chr == 'E');
+        *buffer = chr;
+        buffer += (chr != '_');
+        if (unlikely(last_was_punctuation & is_punctuation)) goto parse_failure;
+        last_was_punctuation = is_punctuation;
+    }
+    if (unlikely(last_was_punctuation)) goto parse_failure;
+    *buffer = '\0';
+    return buffer;
+parse_failure:
+    return NULL;
+}
+static double __Pyx__PyBytes_AsDouble_inf_nan(const char* start, Py_ssize_t length) {
+    int matches = 1;
+    char sign = start[0];
+    int is_signed = (sign == '+') | (sign == '-');
+    start += is_signed;
+    length -= is_signed;
+    switch (start[0]) {
+        #ifdef Py_NAN
+        case 'n':
+        case 'N':
+            if (unlikely(length != 3)) goto parse_failure;
+            matches &= (start[1] == 'a' || start[1] == 'A');
+            matches &= (start[2] == 'n' || start[2] == 'N');
+            if (unlikely(!matches)) goto parse_failure;
+            return (sign == '-') ? -Py_NAN : Py_NAN;
+        #endif
+        case 'i':
+        case 'I':
+            if (unlikely(length < 3)) goto parse_failure;
+            matches &= (start[1] == 'n' || start[1] == 'N');
+            matches &= (start[2] == 'f' || start[2] == 'F');
+            if (likely(length == 3 && matches))
+                return (sign == '-') ? -Py_HUGE_VAL : Py_HUGE_VAL;
+            if (unlikely(length != 8)) goto parse_failure;
+            matches &= (start[3] == 'i' || start[3] == 'I');
+            matches &= (start[4] == 'n' || start[4] == 'N');
+            matches &= (start[5] == 'i' || start[5] == 'I');
+            matches &= (start[6] == 't' || start[6] == 'T');
+            matches &= (start[7] == 'y' || start[7] == 'Y');
+            if (unlikely(!matches)) goto parse_failure;
+            return (sign == '-') ? -Py_HUGE_VAL : Py_HUGE_VAL;
+        case '.': case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
+            break;
+        default:
+            goto parse_failure;
+    }
+    return 0.0;
+parse_failure:
+    return -1.0;
+}
+static CYTHON_INLINE int __Pyx__PyBytes_AsDouble_IsSpace(char ch) {
+    return (ch == 0x20) | !((ch < 0x9) | (ch > 0xd));
+}
+CYTHON_UNUSED static double __Pyx__PyBytes_AsDouble(PyObject *obj, const char* start, Py_ssize_t length) {
+    double value;
+    Py_ssize_t i, digits;
+    const char *last = start + length;
+    char *end;
+    while (__Pyx__PyBytes_AsDouble_IsSpace(*start))
+        start++;
+    while (start < last - 1 && __Pyx__PyBytes_AsDouble_IsSpace(last[-1]))
+        last--;
+    length = last - start;
+    if (unlikely(length <= 0)) goto fallback;
+    value = __Pyx__PyBytes_AsDouble_inf_nan(start, length);
+    if (unlikely(value == -1.0)) goto fallback;
+    if (value != 0.0) return value;
+    digits = 0;
+    for (i=0; i < length; digits += start[i++] != '_');
+    if (likely(digits == length)) {
+        value = PyOS_string_to_double(start, &end, NULL);
+    } else if (digits < 40) {
+        char number[40];
+        last = __Pyx__PyBytes_AsDouble_Copy(start, number, length);
+        if (unlikely(!last)) goto fallback;
+        value = PyOS_string_to_double(number, &end, NULL);
+    } else {
+        char *number = (char*) PyMem_Malloc((digits + 1) * sizeof(char));
+        if (unlikely(!number)) goto fallback;
+        last = __Pyx__PyBytes_AsDouble_Copy(start, number, length);
+        if (unlikely(!last)) {
+            PyMem_Free(number);
+            goto fallback;
+        }
+        value = PyOS_string_to_double(number, &end, NULL);
+        PyMem_Free(number);
+    }
+    if (likely(end == last) || (value == (double)-1 && PyErr_Occurred())) {
+        return value;
+    }
+fallback:
+    return __Pyx_SlowPyString_AsDouble(obj);
+}
+
+/* pynumber_float */
+static CYTHON_INLINE PyObject* __Pyx__PyNumber_Float(PyObject* obj) {
+    double val;
+    if (PyLong_CheckExact(obj)) {
+#if CYTHON_USE_PYLONG_INTERNALS
+        if (likely(__Pyx_PyLong_IsCompact(obj))) {
+            val = (double) __Pyx_PyLong_CompactValue(obj);
+            goto no_error;
+        }
+#endif
+        val = PyLong_AsDouble(obj);
+    } else if (PyUnicode_CheckExact(obj)) {
+        val = __Pyx_PyUnicode_AsDouble(obj);
+    } else if (PyBytes_CheckExact(obj)) {
+        val = __Pyx_PyBytes_AsDouble(obj);
+    } else if (PyByteArray_CheckExact(obj)) {
+        val = __Pyx_PyByteArray_AsDouble(obj);
+    } else {
+        return PyNumber_Float(obj);
+    }
+    if (unlikely(val == -1 && PyErr_Occurred())) {
+        return NULL;
+    }
+#if CYTHON_USE_PYLONG_INTERNALS
+no_error:
+#endif
+    return PyFloat_FromDouble(val);
+}
+
 /* Import */
 static PyObject *__Pyx_Import(PyObject *name, PyObject *from_list, int level) {
     PyObject *module = 0;
@@ -8395,6 +10799,134 @@ static PyObject* __Pyx_ImportFrom(PyObject* module, PyObject* name) {
         #endif
     }
     return value;
+}
+
+/* ImportDottedModule */
+#if PY_MAJOR_VERSION >= 3
+static PyObject *__Pyx__ImportDottedModule_Error(PyObject *name, PyObject *parts_tuple, Py_ssize_t count) {
+    PyObject *partial_name = NULL, *slice = NULL, *sep = NULL;
+    if (unlikely(PyErr_Occurred())) {
+        PyErr_Clear();
+    }
+    if (likely(PyTuple_GET_SIZE(parts_tuple) == count)) {
+        partial_name = name;
+    } else {
+        slice = PySequence_GetSlice(parts_tuple, 0, count);
+        if (unlikely(!slice))
+            goto bad;
+        sep = PyUnicode_FromStringAndSize(".", 1);
+        if (unlikely(!sep))
+            goto bad;
+        partial_name = PyUnicode_Join(sep, slice);
+    }
+    PyErr_Format(
+#if PY_MAJOR_VERSION < 3
+        PyExc_ImportError,
+        "No module named '%s'", PyString_AS_STRING(partial_name));
+#else
+#if PY_VERSION_HEX >= 0x030600B1
+        PyExc_ModuleNotFoundError,
+#else
+        PyExc_ImportError,
+#endif
+        "No module named '%U'", partial_name);
+#endif
+bad:
+    Py_XDECREF(sep);
+    Py_XDECREF(slice);
+    Py_XDECREF(partial_name);
+    return NULL;
+}
+#endif
+#if PY_MAJOR_VERSION >= 3
+static PyObject *__Pyx__ImportDottedModule_Lookup(PyObject *name) {
+    PyObject *imported_module;
+#if PY_VERSION_HEX < 0x030700A1 || (CYTHON_COMPILING_IN_PYPY && PYPY_VERSION_NUM  < 0x07030400)
+    PyObject *modules = PyImport_GetModuleDict();
+    if (unlikely(!modules))
+        return NULL;
+    imported_module = __Pyx_PyDict_GetItemStr(modules, name);
+    Py_XINCREF(imported_module);
+#else
+    imported_module = PyImport_GetModule(name);
+#endif
+    return imported_module;
+}
+#endif
+#if PY_MAJOR_VERSION >= 3
+static PyObject *__Pyx_ImportDottedModule_WalkParts(PyObject *module, PyObject *name, PyObject *parts_tuple) {
+    Py_ssize_t i, nparts;
+    nparts = PyTuple_GET_SIZE(parts_tuple);
+    for (i=1; i < nparts && module; i++) {
+        PyObject *part, *submodule;
+#if CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS
+        part = PyTuple_GET_ITEM(parts_tuple, i);
+#else
+        part = PySequence_ITEM(parts_tuple, i);
+#endif
+        submodule = __Pyx_PyObject_GetAttrStrNoError(module, part);
+#if !(CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS)
+        Py_DECREF(part);
+#endif
+        Py_DECREF(module);
+        module = submodule;
+    }
+    if (unlikely(!module)) {
+        return __Pyx__ImportDottedModule_Error(name, parts_tuple, i);
+    }
+    return module;
+}
+#endif
+static PyObject *__Pyx__ImportDottedModule(PyObject *name, PyObject *parts_tuple) {
+#if PY_MAJOR_VERSION < 3
+    PyObject *module, *from_list, *star = __pyx_n_s__3;
+    CYTHON_UNUSED_VAR(parts_tuple);
+    from_list = PyList_New(1);
+    if (unlikely(!from_list))
+        return NULL;
+    Py_INCREF(star);
+    PyList_SET_ITEM(from_list, 0, star);
+    module = __Pyx_Import(name, from_list, 0);
+    Py_DECREF(from_list);
+    return module;
+#else
+    PyObject *imported_module;
+    PyObject *module = __Pyx_Import(name, NULL, 0);
+    if (!parts_tuple || unlikely(!module))
+        return module;
+    imported_module = __Pyx__ImportDottedModule_Lookup(name);
+    if (likely(imported_module)) {
+        Py_DECREF(module);
+        return imported_module;
+    }
+    PyErr_Clear();
+    return __Pyx_ImportDottedModule_WalkParts(module, name, parts_tuple);
+#endif
+}
+static PyObject *__Pyx_ImportDottedModule(PyObject *name, PyObject *parts_tuple) {
+#if CYTHON_COMPILING_IN_CPYTHON && PY_VERSION_HEX >= 0x030400B1
+    PyObject *module = __Pyx__ImportDottedModule_Lookup(name);
+    if (likely(module)) {
+        PyObject *spec = __Pyx_PyObject_GetAttrStrNoError(module, __pyx_n_s_spec);
+        if (likely(spec)) {
+            PyObject *unsafe = __Pyx_PyObject_GetAttrStrNoError(spec, __pyx_n_s_initializing);
+            if (likely(!unsafe || !__Pyx_PyObject_IsTrue(unsafe))) {
+                Py_DECREF(spec);
+                spec = NULL;
+            }
+            Py_XDECREF(unsafe);
+        }
+        if (likely(!spec)) {
+            PyErr_Clear();
+            return module;
+        }
+        Py_DECREF(spec);
+        Py_DECREF(module);
+    } else if (PyErr_Occurred()) {
+        PyErr_Clear();
+    }
+#endif
+    return __Pyx__ImportDottedModule(name, parts_tuple);
 }
 
 /* FixUpExtensionType */
@@ -9977,7 +12509,7 @@ __Pyx_PyType_GetName(PyTypeObject* tp)
     if (unlikely(name == NULL) || unlikely(!PyUnicode_Check(name))) {
         PyErr_Clear();
         Py_XDECREF(name);
-        name = __Pyx_NewRef(__pyx_n_s__19);
+        name = __Pyx_NewRef(__pyx_n_s__23);
     }
     return name;
 }
