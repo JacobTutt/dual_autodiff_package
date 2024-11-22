@@ -154,8 +154,8 @@ print(derivative)   # [ 5.  7.  9.]
 ```python
 funcs = [
     lambda x: x**2 + x,
-    lambda x: x.sin(),
-    lambda x: x.log()
+    lambda x: sin(x)
+    lambda x: log(x)
 ]
 x = np.array([1, 2, 3])
 results = multi_auto_diff(funcs, x)
