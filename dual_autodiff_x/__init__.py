@@ -1,13 +1,29 @@
-# Import the main Dual class from the compiled extension
-from .dual import *
+# Import the main Dual class explicitly
+from dual_autodiff_x.dual import Dual
 
-# Import version information for the package
+# Import specific functions from autodiff_tools
+from dual_autodiff_x.autodiff_tools import (
+    sin,
+    cos,
+    tan,
+    arcsin,
+    arccos,
+    arctan,
+    sinh,
+    cosh,
+    tanh,
+    exp,
+    log,
+    sqrt,
+    pow,
+    auto_diff,
+    multi_auto_diff,
+)
+
+# Import version information from the main package
 from dual_autodiff.version import __version__
 
-# Import mathematical functions from the compiled extension
-from .autodiff_tools import *
-
-# Define the public API of the package
+# Define the public API of the package explicitly
 __all__ = [
     "Dual",
     "sin",
@@ -25,4 +41,5 @@ __all__ = [
     "pow",
     "auto_diff",
     "multi_auto_diff",
+    "__version__",
 ]
