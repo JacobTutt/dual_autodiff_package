@@ -1,5 +1,5 @@
 # Dual Numbers in Dual Autodiff Package
-**`dual_autodiff`** is a Python library that enables the use of dual numbers in the aim of preforming automatic differentiation.
+[**`dual_autodiff`**](https://dual-autodiff-package.readthedocs.io/en/latest/) is a Python library that enables the use of dual numbers in the aim of preforming automatic differentiation.
 
 ### Recent Updates - Version v1.1.0
 
@@ -20,11 +20,11 @@ ie. consider $f(x) = x^2$:
 
 $$f(x) = (x + \epsilon)^2 = x^2 + 2x\epsilon$$
 
-- $x^2$: Outputs real value - the functions value
-- $2x$: Outputs dual value - the functions derivative
+- $x^2$: Output's real value - the functions value
+- $2x$: Output's dual value - the functions derivative
 
 ### Applications:
-- **Optimization**: In algorithms like gradient descent.
+- **Optimisation**: In algorithms like gradient descent.
 - **Machine Learning**: Enabling backpropagation and training of neural networks.
 - **Physics and Engineering**: For solving differential equations.
 
@@ -108,6 +108,7 @@ from dual_autodiff import auto_diff
 ```
 
 ##### Cythonized version
+- The cythonised version stored in the subpackage `dual_autodiff_x` fully support all functionality and typically runs 10-20% faster.
 ```python
 from dual_autodiff_x import Dual
 from dual_autodiff_x import sin, cos, tan, ...
