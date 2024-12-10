@@ -30,7 +30,7 @@ dependencies = ["numpy>=1.21"]
 [project.optional-dependencies]
 tutorial = ["numpy", "nbsphinx", "jupyter", "matplotlib", "ipython", "ipykernel", "pandas", "tabulate"]
 testing = ["pytest"]
-docs = ["sphinx","setuptools_scm"]
+docs = ["sphinx", "setuptools_scm", "sphinx-autodoc-typehints", "sphinx_rtd_theme", "nbsphinx", "myst-parser"]
 
 [project.urls]
 "Documentation" = "https://dual-autodiff.readthedocs.io/en/latest/"
@@ -44,6 +44,7 @@ write_to = "dual_autodiff/version.py"
 
 [tool.setuptools.packages.find]
 where = ["."]
+exclude = ["tests*", "docs*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
