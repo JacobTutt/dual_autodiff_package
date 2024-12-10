@@ -54,6 +54,11 @@ All features now fully compatible with **numpy arrays of Dual numbers**
 ## Installation
 
 1. Clone the repository:
+    - Clone the repository from the remote repository (GitLab or GitHub) to your local machine. Replace <URL> with the actual repository URL:
+    ```bash
+    git clone <url>
+    ```
+      eg.
     ```bash
     git clone https://github.com/JacobTutt/dual_autodiff_package.git
     cd dual_autodiff_package
@@ -62,8 +67,15 @@ All features now fully compatible with **numpy arrays of Dual numbers**
 2. Install the package:
 
     2.1. Install the full package:
+    - For general use
     ```bash
-    pip install .
+    pip install -e .
+    ```
+    - For optional dependecies (ie to run testing and example notebooks)
+    ```bash
+    pip install -e ".[tutorial]" # to be able to run notebook
+    pip install -e ".[testing]" # to be able to run test suit
+    pip install -e ".[tutorial,testing]" # to be able to run both (for coursework assesment)
     ```
 
     2.2. Or install binary wheels:
@@ -72,10 +84,17 @@ All features now fully compatible with **numpy arrays of Dual numbers**
     ```bash
     pip install wheelhouse/dual_autodiff-1.1.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
     ```
-
+      - similarly to include optional dependencies
+      ```bash
+      pip install "wheelhouse/dual_autodiff-1.1.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl[tutorial,testing]"
+      ```
     - For `cp311-manylinux_x86_64` (Python 3.11 on Linux):
     ```bash
     pip install wheelhouse/dual_autodiff-1.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+    ```
+    - similiarly to include optional dependencies
+    ```bash
+    pip install "wheelhouse/dual_autodiff-1.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl[tutorial,testing]"
     ```
 
 ## Usage
@@ -187,7 +206,7 @@ To ensure the package has installed correctly you may want to run the tests for 
 
 1. **Install the package with testing dependencies**:
     ```bash
-    pip install `.[testing]`
+    pip install ".[testing]"
     ```
 
 2. **Run the tests using `pytest`**:
@@ -201,15 +220,18 @@ To interactively explore the features and usage of the `dual_autodiff` package, 
 
 1. **Install the package with tutorial dependencies**:
     ```bash
-    pip install '.[tutorial]'
+    pip install ".[tutorial]"
     ```
-
+2. **Generate Jupyter Kernel for current enviroment**:
+    ```bash
+    python -m ipykernel install --user --name=env --display-name "Python (dual_autodiff)"
+    ```
 
 3. **Launch Jupyter Notebook**:
     ```bash
     jupyter notebook tutorials/dual_autodiff.ipynb
     ```
-    - or navigate to and run using your chosen IDE
+  - or navigate to and run using your chosen IDE
 
 ## Documentation
 
