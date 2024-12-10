@@ -40,12 +40,13 @@ setup(
     author="Jacob Tutt",
     author_email="jacobtutt@icloud.com",
     url="https://github.com/JacobTutt/dual_autodiff",
-    packages=find_packages(where=["dual_autodiff", "dual_autodiff_x"]),
+    packages=["dual_autodiff", "dual_autodiff_x"],
     ext_modules=cythonize(
         extensions,
         compiler_directives={"language_level": "3"}
     ),
     install_requires=["numpy"],
+    exclude_package_data={"dual_autodiff_x": ["*.pyx"]},
     classifiers = [
         "Development Status :: 2 - Pre-Alpha",
         "Intended Audience :: Developers",
