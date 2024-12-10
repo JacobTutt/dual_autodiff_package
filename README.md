@@ -54,7 +54,7 @@ All features now fully compatible with **numpy arrays of Dual numbers**
 ## Installation
 
 1. Clone the repository:
-    - Clone the repository from the remote repository (GitLab or GitHub) to your local machine. Replace <URL> with the actual repository URL:
+    - Clone the repository from the remote repository (GitLab or GitHub) to your local machine. Replace <URL> with the the specifc repository URL:
     ```bash
     git clone <url>
     ```
@@ -75,7 +75,8 @@ All features now fully compatible with **numpy arrays of Dual numbers**
     ```bash
     pip install -e ".[tutorial]" # to be able to run notebook
     pip install -e ".[testing]" # to be able to run test suit
-    pip install -e ".[tutorial,testing]" # to be able to run both (for coursework assesment)
+    pip install -e. ".[docs]" # to be able to build docs locally
+    pip install -e ".[tutorial,testing,docs]" # to be able to run all (for coursework assesment)
     ```
 
     2.2. Or install binary wheels:
@@ -86,7 +87,7 @@ All features now fully compatible with **numpy arrays of Dual numbers**
     ```
       - similarly to include optional dependencies
       ```bash
-      pip install "wheelhouse/dual_autodiff-1.1.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl[tutorial,testing]"
+      pip install "wheelhouse/dual_autodiff-1.1.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl[tutorial,testing,docs]"
       ```
     - For `cp311-manylinux_x86_64` (Python 3.11 on Linux):
     ```bash
@@ -94,7 +95,7 @@ All features now fully compatible with **numpy arrays of Dual numbers**
     ```
     - similiarly to include optional dependencies
     ```bash
-    pip install "wheelhouse/dual_autodiff-1.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl[tutorial,testing]"
+    pip install "wheelhouse/dual_autodiff-1.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl[tutorial,testing,docs]"
     ```
 
 ## Usage

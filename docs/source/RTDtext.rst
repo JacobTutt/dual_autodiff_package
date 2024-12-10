@@ -1,7 +1,10 @@
 Overview
 ========
+Why the Dual Autodiff Package?
+------------------------------
 
-
+The **Dual Autodiff Package** is a Python package that provides a simple and efficient way to perform automatic differentiation using dual numbers. 
+The package allows users to compute the derivatives of functions with minimal computational overhead. 
 
 What are Dual Numbers
 ---------------------
@@ -24,13 +27,31 @@ Why Are Dual Numbers Useful?
 Automatic Differentiation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Dual numbers are used within **forward-mode automatic differentiation**, 
-a method for computing **exact derivatives of functions**. This method 
-has low computational overhead and can simultaneously compute a 
-function's value :math:`f(x)` and its derivative :math:`f'(x)`.
+Dual numbers are used within **forward-mode automatic differentiation**, a method for computing **exact derivatives of functions**. This method has low computational overhead and can simultaneously compute a function's value :math:`f(x)` and its derivative :math:`f'(x)`, for example for any polynomial:
 
-For a function :math:`f(x)`, using dual numbers, we can compute both the 
-value of the function and its derivative simultaneously. Consider 
+Can be expanded around zero (Taylor series):
+
+.. math::
+
+   f(x) = c_0 + c_1 x + c_2 x^2 + \cdots + c_n x^n
+
+which when used with dual-number arguments can be written as:
+
+.. math::
+
+   f(a + b\epsilon) = c_0 + c_1 (a + b\epsilon) + c_2 (a + b\epsilon)^2 + \cdots + c_n (a + b\epsilon)^n
+
+which simplifies to:
+
+.. math::
+
+   f(a + b\epsilon) = f(a) + b f'(a) \epsilon
+
+where :math:`f'` is the derivative of :math:`f`.
+
+since all terms involving :math:`\epsilon^2` or greater powers become 0 by the definition of :math:`\epsilon`.
+
+For example:
 :math:`f(x) = x^2`:
 
 - **Input**: Dual number - :math:`x + \epsilon`
@@ -42,6 +63,13 @@ value of the function and its derivative simultaneously. Consider
 
 - :math:`x^2`: Outputs the real value - the function's value.
 - :math:`2x`: Outputs the dual value - the function's derivative.
+
+Further Resources
+^^^^^^^^^^^^^^^^^
+
+- **Wikipedia**: `Dual Numbers <https://en.wikipedia.org/wiki/Dual_number>`_
+- **Wikipedia**: `Automatic Differentiation <https://en.wikipedia.org/wiki/Automatic_differentiation>`_
+- **MathWorks**: `Automatic Differentiation Background <https://www.mathworks.com/help/optim/ug/autodiff-background.html#mw_f49ef61a-0257-4245-957b-0befe8878cf9>`_
 
 Applications
 ~~~~~~~~~~~~
@@ -80,6 +108,13 @@ Method 1: Build Package
 -----------------------
 
 1. Clone the repository:
+   - Clone the repository from the remote repository (GitLab or GitHub) to your local machine. Replace <URL> with the the specifc repository URL:
+
+   .. code:: bash
+
+      git clone <URL>
+
+   - for example:
 
    .. code:: bash
 
@@ -87,34 +122,69 @@ Method 1: Build Package
       cd dual_autodiff_package
 
 2. Install the package:
+   - For general use:
 
    .. code:: bash
 
-      pip install .
+      pip install -e .
+
+   - To include optional dependencies for testing and tutorials:
+
+   .. code:: bash
+
+      pip install -e ".[tutorial]" # to be able to run the tutorial notebook
+      pip install -e ".[testing]" # to be able to run the test suite
+      pip install -e ".[docs]" # to be able to build documentation locally
+      pip install -e ".[testing, tutorial, docs]" # to include all optional dependencies (for coursework assesment)
 
 Method 2: Use Pre-Built Wheels (Cython)
 ---------------------------------------
 
 1. Clone the repository:
+   - Clone the repository from the remote repository (GitLab or GitHub) to your local machine. Replace <URL> with the the specifc repository URL:
+
+   .. code:: bash
+
+      git clone <URL>
+
+   - for example:
 
    .. code:: bash
 
       git clone https://github.com/JacobTutt/dual_autodiff_package.git
       cd dual_autodiff_package
 
+
 2. Install the specific wheel for your platform and Python version:
 
    - For ``cp310-manylinux_x86_64`` (Python 3.10 on Linux):
 
-     .. code:: bash
+      - For general use:
 
-        pip install wheelhouse/dual_autodiff-1.1.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      .. code:: bash
+
+         pip install "wheelhouse/dual_autodiff-1.1.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+
+      - To include optional dependencies for testing and tutorials and docs
+
+      .. code:: bash
+
+        pip install "wheelhouse/dual_autodiff-1.1.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl[tutorial,testing,docs]"
 
    - For ``cp311-manylinux_x86_64`` (Python 3.11 on Linux):
 
-     .. code:: bash
+      - For general use:
+      
+      .. code:: bash
 
-        pip install wheelhouse/dual_autodiff-1.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+        pip install "wheelhouse/dual_autodiff-1.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl[tutorial,testing,docs]"
+
+      - To include optional dependencies for testing and tutorials and docs
+
+      .. code:: bash
+
+        pip install "wheelhouse/dual_autodiff-1.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl[tutorial,testing,docs]"
+
 
 Usage
 -----
@@ -123,11 +193,12 @@ Import the Package
 ~~~~~~~~~~~~~~~~~~
 
 To use the package, simply import it into your Python scripts:
+This package includes two sub versions, a Python version and a Cython version. 
 
 .. code:: python
 
-   import dual_autodiff 
-   import dual_autodiff_x # For Cython converted package when using Method 1
+   import dual_autodiff # For normal python package
+   import dual_autodiff_x # For Cython package
 
 
 Optional package features
@@ -138,12 +209,11 @@ Testing
 
 The package includes a test suite to ensure the installation is correct and the package functions as expected.
 
-1. Install optional dependencies for the testing:
+1. Install optional dependencies for the testing (if not done previously):
 
    .. code:: bash
 
-      pip install '.[testing]'
-
+      pip install ".[testing]"
 2. Run the tests:
 
    .. code:: bash
@@ -155,17 +225,25 @@ Tutorial Notebook
 
 The package includes a tutorial notebook to demonstrate the features and usage of the package, the user is encouraged to interact with this notebook to understand the packages functionality, errors it may raise and how to use it effectively.
 
-1. To access the tutorial notebook, install the optional dependencies:
+1. To access the tutorial notebook, install the optional dependencies (if not done previously):
 
    .. code:: bash
 
-      pip install '.[tutorial]'
+      pip install ".[tutorial]"
 
-2. Open the Jupyter notebook:
+3. Generate Jupyter Kernel for current enviroment
+
+   .. code:: bash
+
+      python -m ipykernel install --user --name=env --display-name "Python (dual_autodiff)"
+
+3. Open the Jupyter notebook:
 
    .. code:: bash
 
       jupyter notebook notebooks/dual_autodiff_tutorial.ipynb
+
+   - or navigate to and run using your chosen IDE (ie. VSCode)
 
 Package Examples
 ================
