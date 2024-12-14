@@ -5,4 +5,4 @@ repos:
         name: Run pytest
         entry: pytest
         language: system
-        types: [python]
+        pass_filenames: false  # Ensures pytest runs even if no specific files are staged
