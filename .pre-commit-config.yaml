@@ -3,6 +3,6 @@ repos:
     hooks:
       - id: pytest
         name: Run pytest with coverage
-        entry: pytest --cov=your_package -v
+        entry: pytest --cov=dual_autodiff -v
         language: system
         pass_filenames: false
