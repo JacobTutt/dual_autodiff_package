@@ -32,6 +32,41 @@ def test_dual_comparisons():
     assert x >= y
     assert z >= x
 
+# Test invalid type entries 
+def test_rsub_invalid_type():
+    x = Dual(2, 1)
+    with pytest.raises(TypeError):
+        "string" - x  
+
+# Division by zero
+def test_rtruediv_zero_real():
+    x = Dual(0, 1)
+    with pytest.raises(ZeroDivisionError):
+        1 / x  
+
+# Dividing string
+def test_rtruediv_invalid_type():
+    x = Dual(2, 1)
+    with pytest.raises(TypeError):
+        "string" / x 
+
+# Test invalid comparison woith sting
+def test_eq_invalid_type():
+    x = Dual(2, 1)
+    with pytest.raises(TypeError):
+        x == "string" 
+def test_ne_invalid_type():
+    x = Dual(2, 1)
+    with pytest.raises(TypeError):
+        x != "string" 
+def test_gt_invalid_type():
+    x = Dual(2, 1)
+    with pytest.raises(TypeError):
+        x > "string"  
+def test_ge_invalid_type():
+    x = Dual(2, 1)
+    with pytest.raises(TypeError):
+        x >= "string" 
 
 # Test comparisons of arrays of Dual numbers
 def test_dual_array_comparisons():

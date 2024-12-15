@@ -221,8 +221,8 @@ def test_trig_functions():
         Dual(math.pi / 2, 1).tan()
 
 
-# Test invalid initialization of trignometry operations
-def test_invalid_trig_operations():
+# Test invalid initialisation of operations
+def test_invalid_operations():
     x = Dual(-1, 1)
 
     # Logarithm of negative real part

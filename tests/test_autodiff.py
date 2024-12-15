@@ -3,6 +3,7 @@ import math
 from dual_autodiff import Dual
 from dual_autodiff import sin, cos, tan, sinh, cosh, tanh, exp, log, sqrt, arcsin, arccos, arctan, pow
 from dual_autodiff import auto_diff
+import numpy as np
 
 ##  This file tests the actual auto_diff function
 def test_auto_diff():
@@ -41,10 +42,13 @@ def test_auto_diff():
     assert value == 16.0
     assert derivative == 14.0  
 
-def test_auto_diff_errors():
+def test_auto_diff_common_errors():
     # Tests invalid input for function
     with pytest.raises(TypeError):
         auto_diff("non callable function", 2)
+
+    with pytest.raises(TypeError):
+        auto_diff(lambda x: x**2, np.array(["a", "b", "c"])) 
 
     # Tests invalid input for x
     f = lambda x: x**2 + x
@@ -58,3 +62,8 @@ def test_auto_diff_errors():
     value, derivative = auto_diff(f, 3)
     assert value == 7.0
     assert derivative == 0.0  # f'(x) = 0
+
+
+def test_auto_diff_invalid_numpy_array():
+    with pytest.raises(TypeError):
+        auto_diff(lambda x: x**2, np.array(["a", "b", "c"]))  
