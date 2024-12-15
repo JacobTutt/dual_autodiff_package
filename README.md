@@ -1,5 +1,5 @@
 # Dual Numbers in Dual Autodiff Package
-[**`dual_autodiff`**](https://dual-autodiff-package.readthedocs.io/en/latest/) is a Python library that enables the use of dual numbers in the aim of preforming automatic differentiation.
+[**`dual_autodiff`**](https://dual-autodiff-package.readthedocs.io/en/latest/) is a Python library that enables the use of dual numbers with the aim of preforming automatic differentiation.
 
 ### Recent Updates - Version v1.1.0
 
@@ -97,6 +97,8 @@ All features now fully compatible with **numpy arrays of Dual numbers**
     ```bash
     pip install "wheelhouse/dual_autodiff-1.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl[tutorial,testing,docs]"
     ```
+
+    Note for assesment: When installing using binary wheels, you will not be able to import dual_autodiff_x from a python script within the package directory's terminal, as it will default to the local package and there are no .so files distributed as they are to be built with pip install -e ., instead try it from another location after installing. 
 
 ## Usage
 
@@ -243,10 +245,36 @@ To interactively explore the features and usage of the `dual_autodiff` package, 
 To contribute to this package:
 - 1. Fork the repository.
 - 2. Create a new branch for your feature or bugfix.
-- 3. Submit a pull request.
+- 3. Set up pre-commit hooks:
+    This helps run automatic testing to ensure consistency with current package features before commiting
+    - Install `pre-commit`:
+      ```bash
+      pip install pre-commit
+      ```
+    - Set up the hooks:
+      ```bash
+      pre-commit install
+      ```
+- 4. Submit a pull request.
+
 
 ## License
 This project is licensed under the MIT License. See the LICENSE file for more information.
 
 ## Support
 If you need help or have any questions, please open an issue on the GitHub Issues page.
+
+## For Assessment
+
+### Report
+Please find the projects report under `report` directory
+
+### Declaration of Use of Autogeneration Tools
+This project made use of Large Language Models (LLMs), primarily ChatGPT and Co-Pilot, to assist in the development of the package. These tools have been employed for:
+- Helping generate detailed docstrings for the repository’s documentation.
+- Formatting plots to enhance presentation quality.
+- Performing iterative implementation to predefined code.
+- Debugging code and identifying issues in implementation.
+- Developing tests for the package.
+- Helping with Latex formatting for the report.
+- Generating the projects metadata files
