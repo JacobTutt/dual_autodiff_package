@@ -210,7 +210,7 @@ To ensure the package has installed correctly you may want to run the tests for 
 
 1. **Install the package with testing dependencies**:
     ```bash
-    pip install ".[testing]"
+    pip install -e ".[testing]"
     ```
 
 2. **Run the tests using `pytest`**:
@@ -224,7 +224,7 @@ To interactively explore the features and usage of the `dual_autodiff` package, 
 
 1. **Install the package with tutorial dependencies**:
     ```bash
-    pip install ".[tutorial]"
+    pip install -e ".[tutorial]"
     ```
 2. **Generate Jupyter Kernel for current enviroment**:
     ```bash
