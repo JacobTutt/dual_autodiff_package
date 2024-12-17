@@ -54,7 +54,7 @@ All features now fully compatible with **numpy arrays of Dual numbers**
 ## Installation
 
 1. Clone the repository:
-    - Clone the repository from the remote repository (GitLab or GitHub) to your local machine. Replace <URL> with the the specifc repository URL:
+    - Clone the repository from the remote repository (GitLab or GitHub) to your local machine.
     ```bash
     git clone <url>
     ```
@@ -62,6 +62,11 @@ All features now fully compatible with **numpy arrays of Dual numbers**
     ```bash
     git clone https://github.com/JacobTutt/dual_autodiff_package.git
     cd dual_autodiff_package
+    ```
+    or 
+    ```bash
+    git clone https://gitlab.developers.cam.ac.uk/phy/data-intensive-science-mphil/assessments/c1_coursework1/jlt67.git
+    cd jlt67
     ```
 
 2. Install the package:
