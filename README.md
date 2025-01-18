@@ -54,19 +54,10 @@ All features now fully compatible with **numpy arrays of Dual numbers**
 ## Installation
 
 1. Clone the repository:
-    - Clone the repository from the remote repository (GitLab or GitHub) to your local machine.
-    ```bash
-    git clone <url>
-    ```
-      eg.
+    - Clone the repository from the remote repository to your local machine.
     ```bash
     git clone https://github.com/JacobTutt/dual_autodiff_package.git
     cd dual_autodiff_package
-    ```
-    or 
-    ```bash
-    git clone https://gitlab.developers.cam.ac.uk/phy/data-intensive-science-mphil/assessments/c1_coursework1/jlt67.git
-    cd jlt67
     ```
 
 2. Install the package:
@@ -85,7 +76,7 @@ All features now fully compatible with **numpy arrays of Dual numbers**
     ```
 
     2.2. Or install binary wheels:
-
+    eg.
     - For `cp310-manylinux_x86_64` (Python 3.10 on Linux):
     ```bash
     pip install wheelhouse/dual_autodiff-1.1.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
@@ -94,16 +85,6 @@ All features now fully compatible with **numpy arrays of Dual numbers**
       ```bash
       pip install "wheelhouse/dual_autodiff-1.1.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl[tutorial,testing,docs]"
       ```
-    - For `cp311-manylinux_x86_64` (Python 3.11 on Linux):
-    ```bash
-    pip install wheelhouse/dual_autodiff-1.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
-    ```
-    - similiarly to include optional dependencies
-    ```bash
-    pip install "wheelhouse/dual_autodiff-1.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl[tutorial,testing,docs]"
-    ```
-
-    Note for assesment: When installing using binary wheels, you will not be able to import dual_autodiff_x from a python script within the package directory's terminal, as it will default to the local package and there are no .so files distributed as they are to be built with pip install -e ., instead try it from another location after installing. 
 
 ## Usage
 
@@ -269,17 +250,5 @@ This project is licensed under the MIT License. See the LICENSE file for more in
 ## Support
 If you need help or have any questions, please open an issue on the GitHub Issues page.
 
-## For Assessment
-
 ### Report
-Please find the projects report under `report` directory
-
-### Declaration of Use of Autogeneration Tools
-This project made use of Large Language Models (LLMs), primarily ChatGPT and Co-Pilot, to assist in the development of the package. These tools have been employed for:
-- Helping generate detailed docstrings for the repository’s documentation.
-- Formatting plots to enhance presentation quality.
-- Performing iterative implementation to predefined code.
-- Debugging code and identifying issues in implementation.
-- Developing tests for the package.
-- Helping with Latex formatting for the report.
-- Generating the projects metadata files
+Please find a report about the packages development under the `report` directory
