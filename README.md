@@ -1,4 +1,11 @@
-# Dual Numbers in Dual Autodiff Package
+# **Dual Numbers in Dual Autodiff Package**
+
+## Maintainer: Jacob Tutt, Department of Physics, University of Cambridge
+
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Documentation Status](https://readthedocs.org/projects/dual-autodiff-package/badge/?version=latest)](https://dual-autodiff-package.readthedocs.io/en/latest/?badge=latest)
+
+
 [**`dual_autodiff`**](https://dual-autodiff-package.readthedocs.io/en/latest/) is a Python library that enables the use of dual numbers with the aim of preforming automatic differentiation.
 
 ### Recent Updates - Version v1.1.0
@@ -10,7 +17,19 @@ The recent release of `dual_autodiff` provides extensive integration with `numpy
 - **Multi-Function Differentiation**: Introduced the `multi_auto_diff` function, allowing users to evaluate multiple functions and their derivatives at once, and even over a range (array) of points.
 - **Advanced Error Handling and Testing**: Improved error handling mechanisms and added comprehensive test coverage to ensure robustness and reliability.
 
-## Motivation
+## Table of Contents
+- [Purpose](#purpose)
+- [Functionality](#functionality)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Testing](#testing)
+- [Tutorial](#tutorial)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
+- [Support](#support)
+
+## Purpose
 
 **Dual numbers** provide a mathematically robust way to compute derivatives automatically and exactly during function evaluation. It typically has lower computational overhead than numerical approaches and eliminates the associated approximation errors. 
 
@@ -28,7 +47,7 @@ $$f(x) = (x + \epsilon)^2 = x^2 + 2x\epsilon$$
 - **Machine Learning**: Enabling backpropagation and training of neural networks.
 - **Physics and Engineering**: For solving differential equations.
 
-## Features
+## Functionality
 
 All features now fully compatible with **numpy arrays of Dual numbers**
 
@@ -243,12 +262,16 @@ To contribute to this package:
       ```
 - 4. Submit a pull request.
 
+## For Assessment
+- The associated project report can be found under [Project Report](report/report.pdf). 
 
 ## License
-This project is licensed under the MIT License. See the LICENSE file for more information.
+This project is licensed under the [MIT License](https://opensource.org/license/mit/) - see the [LICENSE](LICENSE) file for details.
 
 ## Support
-If you need help or have any questions, please open an issue on the GitHub Issues page.
+If you have any questions, run into issues, or just want to discuss the project, feel free to:
+- Open an issue on the [GitHub Issues](https://github.com/JacobTutt/dual_autodiff_package/issues) page.  
+- Reach out to me directly via [email](mailto:jacobtutt@icloud.com).
 
-### Report
-Please find a report about the packages development under the `report` directory
+
+
