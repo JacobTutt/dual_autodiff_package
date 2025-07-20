@@ -1,4 +1,4 @@
-# **Dual Numbers in Dual Autodiff Package**
+# **Automatic Differentiation with Dual Numbers: The dual_autodiff Package**
 
 ## Maintainer: Jacob Tutt, Department of Physics, University of Cambridge
 
